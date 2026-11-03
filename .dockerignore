@@ -1,0 +1,21 @@
+# Never include local secrets in build contexts
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated files
+**/node_modules/
+**/dist/
+blockchain/cache/
+blockchain/artifacts/
+coverage/
+
+# Local/editor and academic submission files
+.DS_Store
+.playwright-cli/
+tmp/
+synopsis.rtfd/
+*.docx
+*.pptx
+*.rtf
+*.log

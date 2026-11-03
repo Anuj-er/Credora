@@ -1,0 +1,24 @@
+# Local credentials and environment files
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated output
+**/node_modules/
+**/dist/
+blockchain/cache/
+blockchain/artifacts/
+coverage/
+
+# Local/editor artifacts
+.DS_Store
+.playwright-cli/
+tmp/
+synopsis.rtfd/
+*.log
+npm-debug.log*
+
+# Academic submission files kept outside the source repository
+*.docx
+*.pptx
+*.rtf
