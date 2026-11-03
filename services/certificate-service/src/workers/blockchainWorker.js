@@ -114,7 +114,7 @@ const startBlockchainWorker = () => {
             credentialHash: certificate.credentialHash,
           },
           {
-            timeout: 60000,
+            timeout: 300000, // Slow Sepolia confirmation must not time out and trigger a retry that hits the already-registered path with no transaction hash
             headers: { 'x-internal-service-token': INTERNAL_SERVICE_TOKEN },
           }
         );
