@@ -1,0 +1,126 @@
+services:
+  mongodb:
+    image: mongo:7
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    env_file: .env
+    command: ["sh", "-c", "if [ -n \"$$REDIS_PASSWORD\" ]; then exec redis-server --requirepass \"$$REDIS_PASSWORD\"; else exec redis-server; fi"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
+
+  hardhat-node:
+    build:
+      context: .
+      dockerfile: blockchain/Dockerfile
+    ports:
+      - "127.0.0.1:8545:8545"
+    restart: unless-stopped
+
+  contract-deployer:
+    build:
+      context: .
+      dockerfile: blockchain/Dockerfile
+    command: ["sh", "scripts/deploy-local-container.sh"]
+    environment:
+      LOCAL_HARDHAT_RPC_URL: http://hardhat-node:8545
+    depends_on:
+      - hardhat-node
+    restart: "no"
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file: .env
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:3001
+      CERTIFICATE_SERVICE_URL: http://certificate-service:3002
+      BLOCKCHAIN_SERVICE_URL: http://blockchain-service:3003
+      IPFS_SERVICE_URL: http://ipfs-service:3004
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+      - auth-service
+      - certificate-service
+      - blockchain-service
+      - ipfs-service
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    ports:
+      - "127.0.0.1:3001:3001"
+    env_file: .env
+    environment:
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://mongodb:27017/credora_local}
+      REDIS_HOST: redis
+    depends_on:
+      - mongodb
+      - redis
+    restart: unless-stopped
+
+  certificate-service:
+    build:
+      context: .
+      dockerfile: services/certificate-service/Dockerfile
+    ports:
+      - "127.0.0.1:3002:3002"
+    env_file: .env
+    environment:
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://mongodb:27017/credora_local}
+      REDIS_HOST: redis
+      BLOCKCHAIN_SERVICE_URL: http://blockchain-service:3003
+      IPFS_SERVICE_URL: http://ipfs-service:3004
+      FRONTEND_URL: http://localhost:5173
+    depends_on:
+      - mongodb
+      - redis
+      - blockchain-service
+      - ipfs-service
+    restart: unless-stopped
+
+  blockchain-service:
+    build:
+      context: .
+      dockerfile: services/blockchain-service/Dockerfile
+    ports:
+      - "127.0.0.1:3003:3003"
+    env_file: .env
+    environment:
+      REDIS_HOST: redis
+      HARDHAT_NETWORK_URL: ${DOCKER_HARDHAT_NETWORK_URL:-http://hardhat-node:8545}
+      CONTRACT_ADDRESS: ${DOCKER_CONTRACT_ADDRESS:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
+      DEPLOYER_PRIVATE_KEY: ${DOCKER_DEPLOYER_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
+    depends_on:
+      redis:
+        condition: service_started
+      hardhat-node:
+        condition: service_started
+      contract-deployer:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  ipfs-service:
+    build:
+      context: .
+      dockerfile: services/ipfs-service/Dockerfile
+    ports:
+      - "127.0.0.1:3004:3004"
+    env_file: .env
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
