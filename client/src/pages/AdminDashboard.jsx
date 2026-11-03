@@ -349,9 +349,9 @@ export default function AdminDashboard() {
                             <td className="px-6 py-3 font-medium">{inst.name}</td>
                             <td className="px-6 py-3 font-mono text-xs">{inst.code}</td>
                             <td className="px-6 py-3">{inst.email}</td>
-                            <td className="px-6 py-3">{statusBadge(inst.status)}</td>
+                            <td className="px-6 py-3">{statusBadge(inst.isApproved ? 'approved' : 'pending')}</td>
                             <td className="px-6 py-3">
-                              {(inst.status || '').toLowerCase() === 'pending' && (
+                              {!inst.isApproved && (
                                 <button
                                   onClick={() => handleApprove(inst._id)}
                                   className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
