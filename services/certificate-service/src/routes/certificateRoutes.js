@@ -13,7 +13,7 @@ const {
   getAdminCertificates,
   revokeCertificate,
   getAuditTrail,
-  getCertificateStats,
+  getCertificateStats, retryBlockchain,
 } = require('../controllers/certificateController');
 
 // Public route — no authentication required
@@ -29,6 +29,6 @@ router.get('/all', authenticate, authorize('admin'), getAdminCertificates);
 router.get('/audit/:certId', authenticate, getAuditTrail);
 router.get('/:certId/pdf', authenticate, authorize('student', 'university', 'admin'), getCertificatePdf);
 router.get('/:certId', authenticate, authorize('student', 'university', 'admin'), getCertificate);
-router.put('/revoke/:certId', authenticate, authorize('university', 'admin'), revokeCertificate);
+router.put('/revoke/:certId', authenticate, authorize('university', 'admin'), revokeCertificate); router.post('/:certId/retry-blockchain', authenticate, authorize('university', 'admin'), retryBlockchain);
 
 module.exports = router;
