@@ -434,12 +434,12 @@ const verifyCertificate = async (req, res) => {
       });
     }
 
-    const chainResponse = await axios.get(
+    let chainResponse = null; try { chainResponse = await axios.get(
       `${BLOCKCHAIN_SERVICE_URL}/api/blockchain/verify/${encodeURIComponent(certificate.certificateId)}`,
       { timeout: 12000 }
     );
-    const chainRecord = chainResponse.data?.data;
-    if (!chainRecord || chainRecord.warning || !chainRecord.isValid) {
+    } catch (chainError) { chainResponse = null; } const chainRecord = chainResponse?.data?.data;
+    if ((!chainRecord || chainRecord.warning || !chainRecord.isValid) && certificate.blockchainStatus !== 'confirmed') { return res.status(200).json({ success: true, data: { ...publicCredentialDetails, status: 'pending', verifiedOnChain: false, message: 'The certificate exists, but its issuance is not yet confirmed on the blockchain.' } }); } if (!chainRecord || chainRecord.warning || !chainRecord.isValid) {
       const unavailable = {
         status: 'unverified',
         ...publicCredentialDetails,
@@ -517,7 +517,7 @@ const verifyCertificate = async (req, res) => {
       data: verificationResult,
     });
   } catch (error) {
-    console.error('Verify certificate error:', error);
+    console.error('Verify certificate error:', error); if (publicCredentialDetails && publicCredentialDetails.blockchainStatus !== 'confirmed') return res.status(200).json({ success: true, data: { ...publicCredentialDetails, status: 'pending', verifiedOnChain: false, message: 'The certificate exists, but its issuance is not yet confirmed on the blockchain.' } });
     res.status(503).json({
       success: false,
       message: 'The blockchain verification service is unavailable. Try again shortly.',
@@ -613,7 +613,7 @@ const getInstitutionCertificates = async (req, res) => {
   }
 };
 
-const getAdminCertificates = async (req, res) => {
+const retryBlockchain = async (req, res) => {   try {     const { certId } = req.params;     const certificate = await Certificate.findOne({ certificateId: certId });     if (!certificate) {       return res.status(404).json({ success: false, message: 'Certificate not found.' });     }     if (!canAccessCertificate(certificate, req.user)) {       return res.status(403).json({ success: false, message: 'You cannot access this certificate.' });     }     if (certificate.blockchainStatus === 'confirmed') {       return res.status(400).json({ success: false, message: 'Certificate is already confirmed on the blockchain.' });     }     if (!certificate.credentialHash) {       return res.status(400).json({ success: false, message: 'Certificate has no credential hash to register on the blockchain.' });     }     await blockchainQueue.add('register-certificate', { certificateId: certificate.certificateId, credentialHash: certificate.credentialHash }, { jobId: `retry-${certificate.certificateId}-${Date.now()}`, attempts: 5, backoff: { type: 'exponential', delay: 5000 }, removeOnComplete: 1000, removeOnFail: 5000 });     certificate.blockchainStatus = 'pending';     certificate.status = 'pending';     await certificate.save();     return res.json({ success: true, data: { certificateId: certificate.certificateId, blockchainStatus: 'pending' } });   } catch (error) {     console.error('Retry blockchain error:', error);     return res.status(500).json({ success: false, message: 'Failed to retry blockchain registration.' });   } }; const getAdminCertificates = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
@@ -621,7 +621,7 @@ const getAdminCertificates = async (req, res) => {
     const query = buildCredentialSearch(req.query.q);
     const [certificates, total] = await Promise.all([
       Certificate.find(query)
-        .select('certificateId studentName courseName institutionName grade issueDate validUntil status blockchainStatus revocationStatus createdAt')
+        .select('certificateId studentName courseName institutionName grade issueDate validUntil status blockchainStatus revocationStatus createdAt').select('+verificationToken')
         .sort({ createdAt: -1 }).skip(skip).limit(limit),
       Certificate.countDocuments(query),
     ]);
@@ -834,5 +834,5 @@ module.exports = {
   getAdminCertificates,
   revokeCertificate,
   getAuditTrail,
-  getCertificateStats,
+  getCertificateStats, retryBlockchain,
 };
