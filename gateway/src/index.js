@@ -7,10 +7,17 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 const RedisStore = require('rate-limit-redis').default;
 const Redis = require('ioredis');
-
 const app = express();
+
+// Trust the single nginx proxy in front of the gateway so
+// X-Forwarded-For set by nginx/Vercel is honoured. Without this,
+// every browser user behind the Vercel rewrite looks like one IP
+// and shares a single rate-limit bucket.
+app.set('trust proxy', 1);
+
 const PORT = process.env.PORT || process.env.GATEWAY_PORT || 3000;
 
 // ── Redis connection ──────────────────────────────────────────────────────────
@@ -30,7 +37,6 @@ redis.on('error', (err) => console.error('❌ Redis error:', err.message));
 
 // ── Security middleware ───────────────────────────────────────────────────────
 app.use(helmet());
-
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
@@ -39,25 +45,7 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
-
 app.use(morgan('combined'));
-
-// ── Rate limiting with Redis store ────────────────────────────────────────────
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window per IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: new RedisStore({
-    sendCommand: (...args) => redis.call(...args),
-  }),
-  message: {
-    success: false,
-    message: 'Too many requests, please try again after 15 minutes.',
-  },
-});
-
-app.use(limiter);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -71,7 +59,25 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// ── Proxy configuration ──────────────────────────────────────────────────────
+// ── Rate limiting with Redis store ────────────────────────────────────────────
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: Number(process.env.RATE_LIMIT_MAX) || 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new RedisStore({
+    sendCommand: (...args) => redis.call(...args),
+  }),
+  message: {
+    success: false,
+    message: 'Too many requests, please try again after 15 minutes.',
+  },
+  skip: (req) => req.path === '/health',
+  keyGenerator: (req) => { const forwarded = req.headers['x-forwarded-for']; if (typeof forwarded === 'string' && forwarded.trim()) { return forwarded.split(',')[0].trim(); } return ipKeyGenerator(req.ip); },
+});
+app.use(limiter);
+
+// ── Proxy configuration ───────────────────────────────────────────────────────
 const proxyOptions = (target) => ({
   target,
   changeOrigin: true,
