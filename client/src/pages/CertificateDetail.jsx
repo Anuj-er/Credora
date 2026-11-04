@@ -35,7 +35,7 @@ export default function CertificateDetail() {
       if (certResult.status === 'fulfilled') setCertificate(certResult.value.certificate || null);
       else setError(certResult.reason?.response?.data?.message || 'Could not load this credential.');
       if (auditResult.status === 'fulfilled') {
-        setAuditTrail(Array.isArray(auditResult.value) ? auditResult.value : auditResult.value.auditTrail || []);
+        setAuditTrail(Array.isArray(auditResult.value) ? auditResult.value : auditResult.value.entries || auditResult.value.auditTrail || []);
       }
     }).finally(() => {
       if (mounted) setLoading(false);
