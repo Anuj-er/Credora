@@ -1,27 +1,60 @@
-# Credora
+# Credora — Verifiable Academic Credentials
 
-Copyright (c) 2026 Anuj Kumar, Ananya Goyal, Amisha Pundir, Aneet Kaur. All rights reserved. See LICENSE.
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.20-363636?logo=solidity&logoColor=white)](https://soliditylang.org/)
+[![Ethereum](https://img.shields.io/badge/Network-Sepolia-627EEA?logo=ethereum&logoColor=white)](https://sepolia.etherscan.io/address/0xBb0bfdA162ee255116F8da017086c8e012b8fF4d)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-lightgrey)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-credora--eosin.vercel.app-4f46e5)](https://credora-eosin.vercel.app/)
 
-Credora is a prototype for issuing and checking academic credentials. An approved university account creates a credential and a PDF. A recipient can share its QR link so another person can review the displayed details, the credential proof recorded on an EVM chain, and its current revocation status.
+> **Admin approves. University issues. Blockchain proves. Anyone verifies.**
 
-## What it does
+Credora is a working prototype for issuing and verifying academic credentials with on-chain proof. An approved university issues a credential, its proof is recorded on Sepolia (Ethereum testnet), and anyone can verify it from a public QR link — no account needed, no personal data on-chain.
 
-- Lets administrators add institutions, approve them, and manage account roles.
-- Lets approved university accounts preview and issue credentials one at a time.
-- Gives students a workspace to view their own credentials and download their PDFs.
-- Gives credential recipients a public verification page and QR link.
-- Lets an institution request revocation and shows its pending, failed, or confirmed state.
-- Provides a transaction explorer link for confirmed on-chain transactions.
+**Live demo:** https://credora-eosin.vercel.app/ · **Contract (Sepolia):** [`0xBb0bfdA162ee255116F8da017086c8e012b8fF4d`](https://sepolia.etherscan.io/address/0xBb0bfdA162ee255116F8da017086c8e012b8fF4d)
 
-CSV or bulk issuance is not implemented.
+> **Prototype, not production.** Credora is a student project demonstrating a complete credential lifecycle. It is not a production identity system: see [Known limitations](#known-limitations) and [Roadmap](#roadmap--future-proofing). Do not use real student records in it.
 
-## Data and trust model
+## How it works
 
-- Credential names and details are not written to the blockchain. The contract stores a salted credential commitment and its issuer/status metadata.
-- Readable PDFs are encrypted with AES-256-GCM before storage in MongoDB. When Pinata is configured, the background worker stores an encrypted backup there.
-- A QR/share URL is a bearer link: anyone who obtains it can view that credential's public verification details. Share it intentionally and use fictional data in public demos.
-- The institution account initiates issuance, while Credora's configured service wallet submits the on-chain transaction. Separate university wallet signatures and independent validation of source records are not implemented.
-- Registration does not verify email ownership, and password reset/email recovery is not implemented. Do not use real student records or treat this prototype as a production identity system.
+```text
+  Admin approves an institution
+        │
+        ▼
+  University issues a credential (PDF preview → issue)
+        │
+        ├─► Encrypted PDF stored in MongoDB (AES-256-GCM)
+        ├─► Encrypted backup pinned to IPFS via Pinata (optional)
+        └─► Salted commitment written to the Sepolia contract
+        │
+        ▼
+  Student receives a QR / share link (a bearer token, not the record ID)
+        │
+        ▼
+  Anyone verifies: public page shows the credential, its on-chain
+  proof, and its current status (valid / pending / revoked / expired)
+```
+
+**What is on-chain, and what is not:**
+
+| Data | Where it lives |
+|---|---|
+| Student name, course, grade, dates | MongoDB only (never on-chain) |
+| PDF | AES-256-GCM encrypted in MongoDB; encrypted backup on Pinata |
+| Salted credential commitment + issuer/status | Sepolia smart contract |
+| Revocation | Status change on-chain; the reason stays in Credora's private record |
+
+A QR/share URL is a **bearer link**: anyone who obtains it can view that credential's public verification details. Share it intentionally, and use fictional data in public demos.
+
+## Features
+
+- **Admin workspace** — add institutions, approve them, manage account roles, view all credentials and activity.
+- **University workspace** — live PDF preview while drafting, issue credentials one at a time, search issued records, request revocation with a full pending → confirmed lifecycle (failed requests can be retried).
+- **Student workspace** — view your credentials, download PDFs, share the verification link.
+- **Public verification** — paste a link or token, or scan a QR code, to check a credential and its blockchain status. No login required.
+- **On-chain proof** — every confirmed credential links to its Sepolia transaction on Etherscan.
+- **Resilient issuance** — if the blockchain write is slow or fails, the credential stays in a `pending` state and can be retried from the dashboard instead of being lost.
+- **Security basics** — JWT auth with role checks, rate limiting at the gateway, internal-service token for blockchain/IPFS writes, loopback-only backend ports in the demo deployment.
 
 ## Architecture
 
@@ -29,15 +62,15 @@ CSV or bulk issuance is not implemented.
 React/Vite client
        │ /api
        ▼
-API gateway ───── Auth service ───── MongoDB
-       ├──────── Certificate service ─ MongoDB
+API gateway ───── Auth service ───── MongoDB (shared)
+       ├──────── Certificate service ─ MongoDB (shared)
        │                 ├─────────── Redis/BullMQ workers
-       │                 ├─────────── Blockchain service ─ EVM RPC
+       │                 ├─────────── Blockchain service ─ Sepolia RPC
        │                 └─────────── IPFS service ─────── Pinata
        └──────── rate limiting / CORS
 ```
 
-The API gateway is the browser-facing backend. The blockchain and IPFS write endpoints require the private internal-service token and should not be exposed directly to the public internet.
+The API gateway is the browser-facing backend. The blockchain and IPFS write endpoints require the private internal-service token and should not be exposed directly to the public internet. Auth and certificate services **must share one MongoDB database** — they read and write the same credential records.
 
 ## Repository layout
 
@@ -47,12 +80,22 @@ gateway/                        API gateway, proxy, rate limit, CORS
 services/auth-service/          accounts, login, roles, institutions
 services/certificate-service/   credential, PDF, QR, and queue workers
 services/blockchain-service/    EVM contract operations
-services/ipfs-service/           Pinata integration
-blockchain/                      Solidity contract and Hardhat scripts/tests
-shared/                          shared backend authentication/config helpers
-docker-compose.yml               local backend and infrastructure stack
-start.sh / stop.sh                local host-process workflow
+services/ipfs-service/          Pinata integration
+blockchain/                     Solidity contract and Hardhat scripts/tests
+shared/                         shared backend authentication/config helpers
+docker-compose.yml              local backend and infrastructure stack
+start.sh / stop.sh              local host-process workflow
 ```
+
+## Live demo deployment
+
+The demo runs on Vercel (frontend) + one AWS EC2 instance in Mumbai (backend), against the Sepolia contract above.
+
+- Frontend: https://credora-eosin.vercel.app/
+- Backend: EC2 `credora-demo` (t3.small, ap-south-1), Docker Compose, nginx proxy on port 80; all service ports bind to loopback only.
+- Demo data is fictional: Demo University (DEMO-001), Northbridge Institute (NORTH-001), Lakeside College (LAKE-001).
+
+Demo hosting costs are covered by AWS credits; the instance should be stopped when not demoing. A stopped instance may get a new public IP on restart, which requires updating the Vercel rewrite and redeploying.
 
 ## Requirements
 
@@ -204,17 +247,11 @@ The commented [.env.example](.env.example) is the complete root environment temp
 | Secrets | `JWT_SECRET`, `JWT_EXPIRES_IN`, `INTERNAL_SERVICE_TOKEN`, `CERTIFICATE_ENCRYPTION_KEY` | User sessions, internal service calls, and encrypted PDFs |
 | Admin bootstrap | `LOCAL_ADMIN_EMAIL`, `LOCAL_ADMIN_PASSWORD` | One-time first-admin setup |
 | Browser/service URLs | `CORS_ORIGIN`, `FRONTEND_URL`, `AUTH_SERVICE_URL`, `CERTIFICATE_SERVICE_URL`, `BLOCKCHAIN_SERVICE_URL`, `IPFS_SERVICE_URL`, `VITE_API_URL` | Browser origin, QR link origin, service routing, and client API path |
-| Blockchain | `HARDHAT_NETWORK_URL`, `LOCAL_HARDHAT_RPC_URL`, `CONTRACT_ADDRESS`, `SEPOLIA_RPC_URL`, `DEPLOYER_PRIVATE_KEY` | Backend RPC, contract, and deployment wallet configuration |
+| Blockchain | `HARDHAT_NETWORK_URL`, `LOCAL_HARDHAT_RPC_URL`, `CONTRACT_ADDRESS`, `SEPOLIA_RPC_URL`, `SEPOLIA_RPC_FALLBACK_URL`, `EXPECTED_CHAIN_ID`, `BLOCK_EXPLORER_TX_URL`, `DEPLOYER_PRIVATE_KEY` | Backend RPC (with fallback), chain-ID check, explorer links, contract, and deployment wallet |
 | Docker blockchain overrides | `DOCKER_HARDHAT_NETWORK_URL`, `DOCKER_CONTRACT_ADDRESS`, `DOCKER_DEPLOYER_PRIVATE_KEY` | Compose blockchain service settings; set all three together for Sepolia |
 | Pinata | `PINATA_API_KEY`, `PINATA_SECRET_KEY`, `PINATA_GATEWAY` | Optional encrypted IPFS backup configuration |
 
 Use separate values for development and hosting. `VITE_API_URL` is compiled into the browser bundle and must never contain a private key or backend secret.
-
-## AWS demo hosting status
-
-The repository currently contains a local-development Compose stack, not a ready-to-launch public deployment. It has no production frontend server, uses local Hardhat/MongoDB defaults, and currently hard-codes the QR origin in Compose. A public AWS Lightsail/EC2 demo therefore needs a demo-specific deployment configuration before starting it on a public server.
-
-For a demo, use a fresh Sepolia wallet and contract, a separate Atlas database such as `credora_demo`, a stable encryption key, and an HTTPS `FRONTEND_URL`/`CORS_ORIGIN`. Expose only the HTTPS entrypoint publicly; keep MongoDB, Redis, the gateway's internal services, and RPC ports private. Use fictional student data. Do not deploy with a wallet key that has been shared or committed.
 
 ## API reference
 
@@ -239,7 +276,7 @@ All browser API calls go through the gateway at `http://localhost:3000` in local
 
 | Method | Path | Access |
 |---|---|---|
-| `GET` | `/verify/:certId` | Public bearer/share link |
+| `GET` | `/verify/:token` | Public bearer/share link |
 | `POST` | `/preview` | University or admin |
 | `POST` | `/issue` | University or admin |
 | `GET` | `/stats` | Signed-in admin, university, or student |
@@ -249,6 +286,7 @@ All browser API calls go through the gateway at `http://localhost:3000` in local
 | `GET` | `/audit/:certId` | Signed-in user |
 | `GET` | `/:certId/pdf` | Student, university, or admin; ownership/access is checked |
 | `GET` | `/:certId` | Student, university, or admin; ownership/access is checked |
+| `POST` | `/:certId/retry-blockchain` | University (own institution) or admin; retry a failed/pending on-chain write |
 | `PUT` | `/revoke/:certId` | University or admin |
 
 ### Internal services
@@ -275,16 +313,47 @@ docker compose config --quiet
 docker compose build
 ```
 
-The contract tests run against the local Hardhat test environment; they do not issue transactions to Sepolia.
+The contract tests run against the local Hardhat test environment; they do not issue transactions to Sepolia. 14 contract tests cover deployment, issuer management, issuance, double-issuance prevention, verification, revocation, and audit queries.
 
-## Known prototype limitations
+## Known limitations
 
 - No email ownership verification or password recovery.
-- No CSV/bulk issuance.
-- No separate university wallet signature or external source-data validation.
+- No CSV/bulk issuance — credentials are issued one at a time.
+- No separate university wallet signature or external source-data validation: the institution account initiates issuance, while Credora's configured service wallet submits the on-chain transaction.
 - The public QR/share link is a bearer link to credential details.
-- This repository does not yet include production/demo Compose, frontend hosting, backup, or monitoring configuration.
+- No production/demo Compose, backup, or monitoring configuration is included in this repository; the live demo is deployed from a separate demo configuration.
+
+## Roadmap — future-proofing
+
+These are the improvements that would turn the prototype into a production-grade system, in priority order. None of them are implemented yet, and they are listed here so the project's direction is honest about what "complete" means.
+
+1. **Trust and institution onboarding** — email verification, password reset, and a real onboarding flow: domain ownership check, evidence-based admin approval, and a public institution profile a verifier can inspect. This matters most, because on-chain proof is worthless if the issuer itself is unverified.
+2. **Standards-based credentials** — issue [W3C Verifiable Credentials](https://www.w3.org/TR/vc-data-model-2.0/) (see below) so credentials can be checked by any compliant verifier and held in a wallet, not only on Credora's verify page.
+3. **Bulk issuance** — CSV upload with per-row validation and a dry-run preview, plus reusable templates per degree, so a university can issue a whole graduating batch in one go.
+4. **Verifier tools** — a public verification API and an embeddable verification widget, so an employer can check a credential from their own site.
+5. **Operations** — automated backups of encrypted data, the encryption key in a proper secret store (never a single `.env` on one server), health monitoring and alerting, and multi-region redundancy.
+
+### Making Credora standards-based
+
+Today Credora uses its own credential format and its own salted-hash commitment on-chain. A standards-based version would add, alongside the existing contract anchor:
+
+- **W3C Verifiable Credentials Data Model 2.0** — each credential becomes a JSON-LD document with `@context`, `type`, `issuer`, `issuanceDate`, `credentialSubject` (student, degree, grade), and `credentialStatus`. This is the format employers, wallets, and other verifiers already understand.
+- **Decentralized Identifiers (DIDs)** — institutions get a `did:web` identifier (resolvable from their own domain, which also proves they control it) and students get a `did:key` holder identifier, replacing Credora-internal account IDs as the identity layer.
+- **Data Integrity proofs** — sign each credential with an Ed25519 key (e.g. `Ed25519Signature2020`) so the credential itself is cryptographically verifiable offline, with the blockchain commitment kept as the tamper-evidence anchor and revocation source.
+- **W3C BitstringStatusList for revocation** — replace the custom revocation status with the standard status-list mechanism, so any VC verifier can read whether a credential is revoked.
+- **Open Badges 3.0** — build the credential on Open Badges 3.0, which is itself a Verifiable Credential profile, for compatibility with badge wallets and learning platforms.
+- **Verifiable Presentations** — let students present a credential (or a subset of it, e.g. "degree awarded" without the grade) to an employer as a signed presentation, instead of sharing a bearer link to the full record.
+- **Schema.org / CTDL vocabulary** — describe degrees and qualifications with shared vocabularies so credentials are machine-readable across institutions and countries.
+
+The migration path is incremental: keep the current contract as the anchor, add a VC JSON document per credential (issued, signed, and stored alongside the encrypted PDF), and add a `/verify` response that returns the VC so standard verifiers can consume it. The existing verify page keeps working throughout.
+
+## Team
+
+- **Anuj Kumar** — architecture, backend services, Solidity + Sepolia, AWS/Vercel deployment, integration, bug fixes
+- **Ananya Goyal** — frontend (React/Vite UI, dashboards, verify page, QR/PDF display)
+- **Amisha Pundir** — testing and verification, demo data, documentation
+- **Aneet Kaur** — research, report, presentation and demo script
 
 ## License
 
-No software license is included yet. All rights are reserved unless the project maintainers add a license file.
+Copyright (c) 2026 Anuj Kumar, Ananya Goyal, Amisha Pundir, Aneet Kaur. All rights reserved. See [LICENSE](LICENSE).
