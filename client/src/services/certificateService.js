@@ -6,6 +6,30 @@ const certificateService = {
     return unwrapResponse(response);
   },
 
+  bulkIssue: async (rows) => {
+    const response = await api.post('/certificates/bulk', { rows });
+    return unwrapResponse(response);
+  },
+
+  getVerifiableCredential: async (certId) => {
+    const response = await api.get(`/certificates/${certId}/vc`);
+    return unwrapResponse(response);
+  },
+
+  downloadVerifiableCredential: async (certId) => {
+    const vc = await certificateService.getVerifiableCredential(certId);
+    const data = vc?.verifiableCredential || vc?.data || vc;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${certId}.credential.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+  },
+
   previewCertificatePdf: async (data, signal) => api.post('/certificates/preview', data, {
     responseType: 'blob',
     signal,

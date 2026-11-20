@@ -7,7 +7,16 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const rateLimit = require('express-rate-limit');
-const { ipKeyGenerator } = require('express-rate-limit');
+
+// express-rate-limit's ipKeyGenerator is not exported by the CommonJS build
+// (v7.5.1 exposes only default/rateLimit/MemoryStore via require()), so
+// calling it throws on every request. This local helper does the same thing:
+// IPv4 addresses pass through, IPv6 addresses collapse to their /64 subnet
+// so one client cannot exhaust the limit with many addresses.
+const ipKeyGenerator = (ip) => {
+  if (!ip || typeof ip !== 'string' || !ip.includes(':')) return ip;
+  return ip.split(':').slice(0, 4).join(':');
+};
 const RedisStore = require('rate-limit-redis').default;
 const Redis = require('ioredis');
 const app = express();

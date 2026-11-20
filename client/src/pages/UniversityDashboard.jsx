@@ -15,6 +15,7 @@ import Modal from '../components/Modal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import PaginationControls from '../components/PaginationControls';
+import BulkIssue from '../components/BulkIssue';
 
 const routeViews = {
   '/university': 'Overview',
@@ -53,6 +54,7 @@ export default function UniversityDashboard() {
   const [draftPdfLoading, setDraftPdfLoading] = useState(false);
   const [draftPdfError, setDraftPdfError] = useState('');
   const [previewMode, setPreviewMode] = useState('pdf');
+  const [issueMode, setIssueMode] = useState('single');
   const [logoDataUrl, setLogoDataUrl] = useState('');
   const [logoFileName, setLogoFileName] = useState('');
   const [logoError, setLogoError] = useState('');
@@ -112,7 +114,7 @@ export default function UniversityDashboard() {
   }, [activeTab, certificatePage, certificateSearch, user?.institutionId]);
 
   useEffect(() => {
-    if (currentPath !== '/university/issue') return undefined;
+    if (currentPath !== '/university/issue' || issueMode !== 'single') return undefined;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setDraftPdfLoading(true);
@@ -144,7 +146,7 @@ export default function UniversityDashboard() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [currentPath, form, logoDataUrl, sponsorsText, user?.institutionId]);
+  }, [currentPath, issueMode, form, logoDataUrl, sponsorsText, user?.institutionId]);
 
   useEffect(() => () => {
     if (draftPdfUrl) URL.revokeObjectURL(draftPdfUrl);
@@ -362,6 +364,12 @@ export default function UniversityDashboard() {
                 </div>
               </div>
 
+              <div className="preview-mode-tabs mb-6" role="tablist" aria-label="Issue mode">
+                <button type="button" role="tab" aria-selected={issueMode === 'single'} className={issueMode === 'single' ? 'active' : ''} onClick={() => setIssueMode('single')}><FiFileText aria-hidden="true" /> Single credential</button>
+                <button type="button" role="tab" aria-selected={issueMode === 'bulk'} className={issueMode === 'bulk' ? 'active' : ''} onClick={() => setIssueMode('bulk')}><FiUploadCloud aria-hidden="true" /> Bulk issue (CSV)</button>
+              </div>
+
+              {issueMode === 'single' ? (
               <form onSubmit={handleIssue} className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div className="sm:col-span-2">
@@ -440,7 +448,11 @@ export default function UniversityDashboard() {
                   {issuing ? <LoadingSpinner text="Creating credential…" /> : <><FiPlusCircle /> Issue credential</>}
                 </button>
               </form>
+              ) : (
+                <BulkIssue />
+              )}
             </section>
+            {issueMode === 'single' && (
             <aside className="issue-preview-sticky">
               <p className="eyebrow text-slate-400 mb-3">LIVE PREVIEW</p>
               <div className="preview-mode-tabs" role="tablist" aria-label="Credential preview type">
@@ -468,6 +480,7 @@ export default function UniversityDashboard() {
               )}
               <p className="mt-3 text-xs text-slate-500">The PDF preview uses the final certificate layout and updates as you edit. The issued copy adds the verification QR and record ID. The verification page preview shows what a link recipient sees.</p>
             </aside>
+            )}
           </motion.div>
         )}
 

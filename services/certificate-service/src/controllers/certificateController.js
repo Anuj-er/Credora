@@ -11,6 +11,7 @@ const { sha256, createCredentialHash } = require('../utils/credentialProof');
 const { encryptDocument, decryptDocument } = require('../utils/documentCrypto');
 const { parseInstitutionLogo } = require('../utils/institutionLogo');
 const { getTransactionUrl } = require('../utils/transactionExplorer');
+const { buildVerifiableCredential } = require('../utils/verifiableCredential');
 
 const parseValidityDate = (value) => {
   if (!value) return null;
@@ -66,6 +67,16 @@ const canAccessCertificate = (certificate, user) => {
   return false;
 };
 
+const getPublicBaseUrl = () => String(
+  process.env.FRONTEND_URL || process.env.PUBLIC_URL || 'http://localhost:5173',
+).replace(/\/$/, '');
+
+const validationError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
 const serializePrivateCertificate = (certificate) => ({
   ...certificate.toJSON(),
   verificationToken: certificate.verificationToken,
@@ -75,139 +86,149 @@ const serializePrivateCertificate = (certificate) => ({
 });
 
 /**
+ * Core issuance used by both the single-issue endpoint and bulk issuance.
+ * Validates exactly like the single-issue flow, creates the certificate
+ * record + PDF + encrypted document + credential hash, then enqueues the
+ * same IPFS and blockchain queue jobs. Throws an Error with the same
+ * user-facing message (and statusCode) on validation failure.
+ * @returns {{ certificate, verificationToken }}
+ */
+const issueOne = async (user, body, { institutionId: institutionIdOverride } = {}) => {
+  const studentName = String(body.studentName || '').trim();
+  const studentEmail = String(body.studentEmail || '').trim().toLowerCase();
+  const studentId = String(body.studentId || '').trim();
+  const certificateTitle = String(body.certificateTitle || 'Certificate of Achievement').trim();
+  const courseName = String(body.courseName || '').trim();
+  const grade = String(body.grade || '').trim();
+  const teacherName = String(body.teacherName || '').trim();
+  const teacherTitle = String(body.teacherTitle || '').trim();
+  const criteria = String(body.criteria || '').trim();
+  const validUntil = parseValidityDate(body.validUntil);
+  const sponsors = Array.isArray(body.sponsors)
+    ? body.sponsors.map((sponsor) => String(sponsor || '').trim()).filter(Boolean)
+    : [];
+  const institutionLogo = parseInstitutionLogo(body.institutionLogo);
+
+  if (!studentName || !courseName) {
+    throw validationError('Student name and course name are required.');
+  }
+  if (studentName.length > 120 || studentEmail.length > 254 || studentId.length > 80 || courseName.length > 160 || grade.length > 30 || certificateTitle.length > 80 || teacherName.length > 120 || teacherTitle.length > 80 || criteria.length > 300 || sponsors.length > 5 || sponsors.some((sponsor) => sponsor.length > 100)) {
+    throw validationError('One or more certificate fields exceed the allowed length.');
+  }
+  if (!studentEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(studentEmail)) {
+    throw validationError('Enter a valid student email address.');
+  }
+
+  const institutionId = user.role === 'university'
+    ? user.institutionId
+    : (institutionIdOverride || body.institutionId);
+  if (!institutionId || !mongoose.Types.ObjectId.isValid(String(institutionId))) {
+    throw validationError('A valid institution is required.');
+  }
+  const institution = await mongoose.connection.collection('institutions').findOne({
+    _id: new mongoose.Types.ObjectId(String(institutionId)),
+    isApproved: true,
+  });
+  if (!institution) {
+    throw validationError('The issuing institution is not approved.', 403);
+  }
+
+  const issuedAt = body.issueDate ? new Date(body.issueDate) : new Date();
+  if (Number.isNaN(issuedAt.getTime())) {
+    throw validationError('Enter a valid issue date.');
+  }
+  if (issuedAt > new Date()) {
+    throw validationError('Issue date cannot be in the future.');
+  }
+  if (body.validUntil && !validUntil) {
+    throw validationError('Enter a valid expiration date.');
+  }
+  if (validUntil && validUntil < issuedAt) {
+    throw validationError('Expiration date cannot be before the issue date.');
+  }
+
+  const certificateId = `CERT-${uuidv4()}`;
+  const verificationToken = crypto.randomBytes(32).toString('base64url');
+  const qrCode = await generateQR(verificationToken);
+  const certData = {
+    certificateId,
+    verificationToken,
+    verificationTokenHash: sha256(verificationToken),
+    studentName,
+    studentEmail,
+    studentId,
+    certificateTitle,
+    courseName,
+    grade,
+    teacherName,
+    teacherTitle,
+    sponsors,
+    criteria,
+    validUntil,
+    institutionLogo: institutionLogo.dataUrl,
+    institutionLogoHash: institutionLogo.hash,
+    proofVersion: 3,
+    issueDate: issuedAt,
+    institutionName: institution.name,
+    institutionId: institution._id,
+    issuedBy: user.id,
+    qrCode,
+    status: 'pending',
+    blockchainStatus: 'pending',
+  };
+
+  const pdfBuffer = await generateCertificatePDF({ ...certData, institutionLogoBuffer: institutionLogo.buffer, qrCode });
+  const documentHash = sha256(pdfBuffer);
+  const commitmentSalt = crypto.randomBytes(32).toString('hex');
+  const credentialHash = createCredentialHash({ ...certData, documentHash }, commitmentSalt, 3);
+  const encrypted = encryptDocument(pdfBuffer);
+
+  const certificate = await Certificate.create({
+    ...certData,
+    documentHash,
+    credentialHash,
+    commitmentSalt,
+    ...encrypted,
+    documentStorageStatus: 'pending',
+  });
+
+  // Store an encrypted backup on IPFS, and anchor the salted credential proof on-chain.
+  await ipfsQueue.add('upload-encrypted-certificate', {
+    certificateId: certificate.certificateId,
+    encryptedPdfBase64: encrypted.encryptedDocument.toString('base64'),
+    documentIv: encrypted.documentIv,
+    documentAuthTag: encrypted.documentAuthTag,
+    fileName: `${certificateId}.pdf.enc`,
+  }, {
+    jobId: `ipfs-${certificateId}`,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 3000 },
+    removeOnComplete: 1000,
+    removeOnFail: 5000,
+  });
+  await blockchainQueue.add('register-certificate', {
+    certificateId,
+    credentialHash,
+  }, {
+    jobId: `issue-${certificateId}`,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: 1000,
+    removeOnFail: 5000,
+  });
+
+  return { certificate, verificationToken };
+};
+
+/**
  * @desc    Issue a new academic certificate
  * @route   POST /api/certificates/issue
  * @access  Private (university)
  */
 const issueCertificate = async (req, res) => {
   try {
-    const studentName = String(req.body.studentName || '').trim();
-    const studentEmail = String(req.body.studentEmail || '').trim().toLowerCase();
-    const studentId = String(req.body.studentId || '').trim();
-    const certificateTitle = String(req.body.certificateTitle || 'Certificate of Achievement').trim();
-    const courseName = String(req.body.courseName || '').trim();
-    const grade = String(req.body.grade || '').trim();
-    const teacherName = String(req.body.teacherName || '').trim();
-    const teacherTitle = String(req.body.teacherTitle || '').trim();
-    const criteria = String(req.body.criteria || '').trim();
-    const validUntil = parseValidityDate(req.body.validUntil);
-    const sponsors = Array.isArray(req.body.sponsors)
-      ? req.body.sponsors.map((sponsor) => String(sponsor || '').trim()).filter(Boolean)
-      : [];
+    const { certificate, verificationToken } = await issueOne(req.user, req.body);
     const institutionLogo = parseInstitutionLogo(req.body.institutionLogo);
-
-    if (!studentName || !courseName) {
-      return res.status(400).json({
-        success: false,
-        message: 'Student name and course name are required.',
-      });
-    }
-    if (studentName.length > 120 || studentEmail.length > 254 || studentId.length > 80 || courseName.length > 160 || grade.length > 30 || certificateTitle.length > 80 || teacherName.length > 120 || teacherTitle.length > 80 || criteria.length > 300 || sponsors.length > 5 || sponsors.some((sponsor) => sponsor.length > 100)) {
-      return res.status(400).json({ success: false, message: 'One or more certificate fields exceed the allowed length.' });
-    }
-
-    if (!studentEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(studentEmail)) {
-      return res.status(400).json({ success: false, message: 'Enter a valid student email address.' });
-    }
-
-    const institutionId = req.user.role === 'university'
-      ? req.user.institutionId
-      : req.body.institutionId;
-    if (!institutionId || !mongoose.Types.ObjectId.isValid(String(institutionId))) {
-      return res.status(400).json({ success: false, message: 'A valid institution is required.' });
-    }
-    const institution = await mongoose.connection.collection('institutions').findOne({
-      _id: new mongoose.Types.ObjectId(String(institutionId)),
-      isApproved: true,
-    });
-    if (!institution) {
-      return res.status(403).json({ success: false, message: 'The issuing institution is not approved.' });
-    }
-
-    const issuedAt = req.body.issueDate ? new Date(req.body.issueDate) : new Date();
-    if (Number.isNaN(issuedAt.getTime())) {
-      return res.status(400).json({ success: false, message: 'Enter a valid issue date.' });
-    }
-    if (issuedAt > new Date()) {
-      return res.status(400).json({ success: false, message: 'Issue date cannot be in the future.' });
-    }
-    if (req.body.validUntil && !validUntil) {
-      return res.status(400).json({ success: false, message: 'Enter a valid expiration date.' });
-    }
-    if (validUntil && validUntil < issuedAt) {
-      return res.status(400).json({ success: false, message: 'Expiration date cannot be before the issue date.' });
-    }
-
-    const certificateId = `CERT-${uuidv4()}`;
-    const verificationToken = crypto.randomBytes(32).toString('base64url');
-    const qrCode = await generateQR(verificationToken);
-    const certData = {
-      certificateId,
-      verificationToken,
-      verificationTokenHash: sha256(verificationToken),
-      studentName,
-      studentEmail,
-      studentId,
-      certificateTitle,
-      courseName,
-      grade,
-      teacherName,
-      teacherTitle,
-      sponsors,
-      criteria,
-      validUntil,
-      institutionLogo: institutionLogo.dataUrl,
-      institutionLogoHash: institutionLogo.hash,
-      proofVersion: 3,
-      issueDate: issuedAt,
-      institutionName: institution.name,
-      institutionId: institution._id,
-      issuedBy: req.user.id,
-      qrCode,
-      status: 'pending',
-      blockchainStatus: 'pending',
-    };
-
-    const pdfBuffer = await generateCertificatePDF({ ...certData, institutionLogoBuffer: institutionLogo.buffer, qrCode });
-    const documentHash = sha256(pdfBuffer);
-    const commitmentSalt = crypto.randomBytes(32).toString('hex');
-    const credentialHash = createCredentialHash({ ...certData, documentHash }, commitmentSalt, 3);
-    const encrypted = encryptDocument(pdfBuffer);
-
-    const certificate = await Certificate.create({
-      ...certData,
-      documentHash,
-      credentialHash,
-      commitmentSalt,
-      ...encrypted,
-      documentStorageStatus: 'pending',
-    });
-
-    // Store an encrypted backup on IPFS, and anchor the salted credential proof on-chain.
-    await ipfsQueue.add('upload-encrypted-certificate', {
-      certificateId: certificate.certificateId,
-      encryptedPdfBase64: encrypted.encryptedDocument.toString('base64'),
-      documentIv: encrypted.documentIv,
-      documentAuthTag: encrypted.documentAuthTag,
-      fileName: `${certificateId}.pdf.enc`,
-    }, {
-      jobId: `ipfs-${certificateId}`,
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 3000 },
-      removeOnComplete: 1000,
-      removeOnFail: 5000,
-    });
-    await blockchainQueue.add('register-certificate', {
-      certificateId,
-      credentialHash,
-    }, {
-      jobId: `issue-${certificateId}`,
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 5000 },
-      removeOnComplete: 1000,
-      removeOnFail: 5000,
-    });
-
     res.status(201).json({
       success: true,
       message: 'Certificate created. Blockchain verification is processing.',
@@ -220,9 +241,80 @@ const issueCertificate = async (req, res) => {
     console.error('Issue certificate error:', error);
     res.status(error.statusCode || 500).json({
       success: false,
-      message: error.statusCode === 400 ? error.message : 'Failed to issue certificate.',
+      message: (error.statusCode === 400 || error.statusCode === 403) ? error.message : 'Failed to issue certificate.',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
+  }
+};
+
+/**
+ * @desc    Issue many certificates from one request (max 100 rows).
+ *          Rows are processed sequentially; a failed row never blocks
+ *          the other rows. Per-row results carry no tokens or secrets.
+ * @route   POST /api/certificates/bulk
+ * @access  Private (university, admin)
+ */
+const bulkIssueCertificates = async (req, res) => {
+  try {
+    const rows = req.body.rows;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ success: false, message: 'Provide a non-empty rows array.' });
+    }
+    if (rows.length > 100) {
+      return res.status(400).json({ success: false, message: 'A maximum of 100 certificates can be issued in one bulk request.' });
+    }
+    const results = [];
+    let issued = 0;
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index] && typeof rows[index] === 'object' ? rows[index] : {};
+      try {
+        const { certificate } = await issueOne(req.user, row, { institutionId: req.body.institutionId });
+        issued += 1;
+        results.push({ row: index + 1, certificateId: certificate.certificateId, status: 'issued' });
+      } catch (error) {
+        results.push({ row: index + 1, status: 'failed', error: error.message || 'Failed to issue certificate.' });
+      }
+    }
+    return res.json({
+      success: true,
+      summary: { total: rows.length, issued, failed: rows.length - issued },
+      results,
+    });
+  } catch (error) {
+    console.error('Bulk issue certificates error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to issue certificates in bulk.' });
+  }
+};
+
+/**
+ * @desc    Get a certificate as a W3C Verifiable Credential (JSON).
+ *          Pass ?download=1 for a file download.
+ * @route   GET /api/certificates/:certId/vc
+ * @access  Private (student, university, admin)
+ */
+const getVerifiableCredential = async (req, res) => {
+  try {
+    const certificate = await Certificate.findOne({ certificateId: req.params.certId })
+      .select('+verificationToken');
+    if (!certificate) {
+      return res.status(404).json({ success: false, message: 'Certificate not found.' });
+    }
+    if (!canAccessCertificate(certificate, req.user)) {
+      return res.status(403).json({ success: false, message: 'You cannot access this certificate.' });
+    }
+    const verifiableCredential = buildVerifiableCredential(certificate, { baseUrl: getPublicBaseUrl() });
+    if (req.query.download === '1') {
+      res.set({
+        'Content-Type': 'application/json',
+        'Content-Disposition': `attachment; filename="${certificate.certificateId}.credential.json"`,
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+      });
+    }
+    return res.json({ success: true, data: verifiableCredential });
+  } catch (error) {
+    console.error('Get verifiable credential error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to build the verifiable credential.' });
   }
 };
 
@@ -372,13 +464,14 @@ const getCertificatePdf = async (req, res) => {
  */
 const verifyCertificate = async (req, res) => {
   let publicCredentialDetails = null;
+  let certificateDoc = null;
   try {
     const { certId: shareToken } = req.params;
     if (!/^[A-Za-z0-9_-]{40,60}$/.test(shareToken)) {
       return res.status(404).json({ success: false, data: { status: 'not_found', message: 'Verification link is invalid.' } });
     }
     const tokenHash = sha256(shareToken);
-    const cacheKey = `verify_v6_${tokenHash}`;
+    const cacheKey = `verify_v7_${tokenHash}`;
 
     // Check Redis cache first
     const cachedResult = await redis.get(cacheKey);
@@ -390,7 +483,8 @@ const verifyCertificate = async (req, res) => {
       });
     }
 
-    const certificate = await Certificate.findOne({ verificationTokenHash: tokenHash }).select('+commitmentSalt +institutionLogo +institutionLogoHash');
+    const certificate = await Certificate.findOne({ verificationTokenHash: tokenHash }).select('+commitmentSalt +institutionLogo +institutionLogoHash +verificationToken');
+    certificateDoc = certificate;
 
     if (!certificate) {
       const notFoundResult = { status: 'not_found', message: 'Certificate not found.' };
@@ -422,12 +516,15 @@ const verifyCertificate = async (req, res) => {
       revocationTransactionUrl: getTransactionUrl(certificate.revocationTxHash),
     };
 
+    const verifiableCredential = buildVerifiableCredential(certificate, { baseUrl: getPublicBaseUrl() });
+
     if (!certificate.commitmentSalt || !certificate.credentialHash || !certificate.documentHash) {
       return res.json({
         success: true,
         data: {
           status: 'unverified',
           ...publicCredentialDetails,
+          verifiableCredential,
           verifiedOnChain: false,
           message: 'This record was issued before Credora added privacy-preserving blockchain proofs. Reissue it to enable verification.',
         },
@@ -439,7 +536,7 @@ const verifyCertificate = async (req, res) => {
       { timeout: 12000 }
     );
     } catch (chainError) { chainResponse = null; } const chainRecord = chainResponse?.data?.data;
-    if ((!chainRecord || chainRecord.warning || !chainRecord.isValid) && certificate.blockchainStatus !== 'confirmed') { return res.status(200).json({ success: true, data: { ...publicCredentialDetails, status: 'pending', verifiedOnChain: false, message: 'The certificate exists, but its issuance is not yet confirmed on the blockchain.' } }); } if (!chainRecord || chainRecord.warning || !chainRecord.isValid) {
+    if ((!chainRecord || chainRecord.warning || !chainRecord.isValid) && certificate.blockchainStatus !== 'confirmed') { return res.status(200).json({ success: true, data: { ...publicCredentialDetails, verifiableCredential, status: 'pending', verifiedOnChain: false, message: 'The certificate exists, but its issuance is not yet confirmed on the blockchain.' } }); } if (!chainRecord || chainRecord.warning || !chainRecord.isValid) {
       const unavailable = {
         status: 'unverified',
         ...publicCredentialDetails,
@@ -454,6 +551,7 @@ const verifyCertificate = async (req, res) => {
       const tampered = {
         status: 'tampered',
         ...publicCredentialDetails,
+        verifiableCredential,
         verifiedOnChain: false,
         message: 'The credential details do not match the proof recorded on the blockchain.',
         blockchainStatus: 'confirmed',
@@ -508,6 +606,7 @@ const verifyCertificate = async (req, res) => {
       revokedAt: chainRecord.isRevoked && chainRecord.revokedAt
         ? new Date(Number(chainRecord.revokedAt) * 1000)
         : certificate.revokedAt,
+      verifiableCredential,
     };
 
     await redis.setex(cacheKey, 60, JSON.stringify(verificationResult));
@@ -517,13 +616,16 @@ const verifyCertificate = async (req, res) => {
       data: verificationResult,
     });
   } catch (error) {
-    console.error('Verify certificate error:', error); if (publicCredentialDetails && publicCredentialDetails.blockchainStatus !== 'confirmed') return res.status(200).json({ success: true, data: { ...publicCredentialDetails, status: 'pending', verifiedOnChain: false, message: 'The certificate exists, but its issuance is not yet confirmed on the blockchain.' } });
+    console.error('Verify certificate error:', error);
+    const fallbackVC = certificateDoc ? buildVerifiableCredential(certificateDoc, { baseUrl: getPublicBaseUrl() }) : undefined;
+    if (publicCredentialDetails && publicCredentialDetails.blockchainStatus !== 'confirmed') return res.status(200).json({ success: true, data: { ...publicCredentialDetails, verifiableCredential: fallbackVC, status: 'pending', verifiedOnChain: false, message: 'The certificate exists, but its issuance is not yet confirmed on the blockchain.' } });
     res.status(503).json({
       success: false,
       message: 'The blockchain verification service is unavailable. Try again shortly.',
       data: {
         status: 'unverified',
         ...(publicCredentialDetails || {}),
+        verifiableCredential: fallbackVC,
         verifiedOnChain: false,
       },
     });
@@ -825,6 +927,8 @@ const getCertificateStats = async (req, res) => {
 
 module.exports = {
   issueCertificate,
+  bulkIssueCertificates,
+  getVerifiableCredential,
   previewCertificatePdf,
   getCertificate,
   getCertificatePdf,

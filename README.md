@@ -49,9 +49,9 @@ A QR/share URL is a **bearer link**: anyone who obtains it can view that credent
 ## Features
 
 - **Admin workspace** — add institutions, approve them, manage account roles, view all credentials and activity.
-- **University workspace** — live PDF preview while drafting, issue credentials one at a time, search issued records, request revocation with a full pending → confirmed lifecycle (failed requests can be retried).
+- **University workspace** — live PDF preview while drafting, issue credentials one at a time or in bulk from a CSV (up to 100 rows, with a dry-run preview that flags bad rows before anything is issued), search issued records, request revocation with a full pending → confirmed lifecycle (failed requests can be retried).
 - **Student workspace** — view your credentials, download PDFs, share the verification link.
-- **Public verification** — paste a link or token, or scan a QR code, to check a credential and its blockchain status. No login required.
+- **Public verification** — paste a link or token, or scan a QR code, to check a credential and its blockchain status. No login required. Every verification also returns the credential as a **W3C Verifiable Credential (JSON)** — downloadable from the credential and verify pages — and an embeddable verification widget snippet for other sites.
 - **On-chain proof** — every confirmed credential links to its Sepolia transaction on Etherscan.
 - **Resilient issuance** — if the blockchain write is slow or fails, the credential stays in a `pending` state and can be retried from the dashboard instead of being lost.
 - **Security basics** — JWT auth with role checks, rate limiting at the gateway, internal-service token for blockchain/IPFS writes, loopback-only backend ports in the demo deployment.
@@ -318,7 +318,7 @@ The contract tests run against the local Hardhat test environment; they do not i
 ## Known limitations
 
 - No email ownership verification or password recovery.
-- No CSV/bulk issuance — credentials are issued one at a time.
+- The Verifiable Credential export is currently **unsigned** (no cryptographic proof yet); Ed25519 Data Integrity signing is the next step.
 - No separate university wallet signature or external source-data validation: the institution account initiates issuance, while Credora's configured service wallet submits the on-chain transaction.
 - The public QR/share link is a bearer link to credential details.
 - No production/demo Compose, backup, or monitoring configuration is included in this repository; the live demo is deployed from a separate demo configuration.
@@ -328,8 +328,8 @@ The contract tests run against the local Hardhat test environment; they do not i
 These are the improvements that would turn the prototype into a production-grade system, in priority order. None of them are implemented yet, and they are listed here so the project's direction is honest about what "complete" means.
 
 1. **Trust and institution onboarding** — email verification, password reset, and a real onboarding flow: domain ownership check, evidence-based admin approval, and a public institution profile a verifier can inspect. This matters most, because on-chain proof is worthless if the issuer itself is unverified.
-2. **Standards-based credentials** — issue [W3C Verifiable Credentials](https://www.w3.org/TR/vc-data-model-2.0/) (see below) so credentials can be checked by any compliant verifier and held in a wallet, not only on Credora's verify page.
-3. **Bulk issuance** — CSV upload with per-row validation and a dry-run preview, plus reusable templates per degree, so a university can issue a whole graduating batch in one go.
+2. **Standards-based credentials** — ✅ *Started:* every credential is now also issued as a [W3C Verifiable Credential](https://www.w3.org/TR/vc-data-model-2.0/) document, returned by the verify endpoint and downloadable as `.credential.json`. *Still to do:* Ed25519 Data Integrity signing, DIDs for issuers/holders, and BitstringStatusList revocation (see below).
+3. **Bulk issuance** — ✅ *Done:* CSV upload (up to 100 rows) with per-row validation, a dry-run preview, and per-row results. *Still to do:* reusable templates per degree.
 4. **Verifier tools** — a public verification API and an embeddable verification widget, so an employer can check a credential from their own site.
 5. **Operations** — automated backups of encrypted data, the encryption key in a proper secret store (never a single `.env` on one server), health monitoring and alerting, and multi-region redundancy.
 

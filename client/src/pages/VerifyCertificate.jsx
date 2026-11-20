@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { FiAlertTriangle, FiCheckCircle, FiCopy, FiSearch, FiShield, FiXCircle } from 'react-icons/fi';
+import { FiAlertTriangle, FiCheckCircle, FiCode, FiCopy, FiDownload, FiSearch, FiShield, FiXCircle } from 'react-icons/fi';
 import certificateService from '../services/certificateService';
 import CredentialPreview from '../components/CredentialPreview';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -34,6 +34,8 @@ export default function VerifyCertificate() {
   const [result, setResult] = useState(null);
   const [searched, setSearched] = useState(false);
   const [inputError, setInputError] = useState('');
+  const [vcLoading, setVcLoading] = useState(false);
+  const [copiedSnippet, setCopiedSnippet] = useState(false);
 
   useEffect(() => {
     if (!routeToken) return;
@@ -69,6 +71,38 @@ export default function VerifyCertificate() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const downloadVc = async () => {
+    if (!result?.certificateId) return toast.error('No credential record to download.');
+    setVcLoading(true);
+    try {
+      await certificateService.downloadVerifiableCredential(result.certificateId);
+      toast.success('Verifiable Credential (.json) downloaded.');
+    } catch (downloadError) {
+      toast.error(downloadError.response?.data?.message || 'Could not download the Verifiable Credential.');
+    } finally {
+      setVcLoading(false);
+    }
+  };
+
+  const embedSnippet = (() => {
+    const snippetToken = extractShareToken(shareLink);
+    return snippetToken
+      ? `<iframe src="${window.location.origin}/verify/${snippetToken}" width="100%" height="600" frameborder="0" title="Verify credential with Credora"></iframe>`
+      : '';
+  })();
+
+  const copyEmbedSnippet = async () => {
+    if (!embedSnippet) return;
+    try {
+      await navigator.clipboard.writeText(embedSnippet);
+      setCopiedSnippet(true);
+      toast.success('Embed snippet copied.');
+      window.setTimeout(() => setCopiedSnippet(false), 2500);
+    } catch (_error) {
+      toast.error('Could not copy the snippet. Select and copy it manually.');
     }
   };
 
@@ -212,8 +246,28 @@ export default function VerifyCertificate() {
                 <div className="verify-share-note">
                   <p>This share link reveals the details shown above to anyone who has it. The original PDF remains available only to the holder and issuing institution.</p>
                   <button type="button" onClick={copyLink} className="btn-secondary"><FiCopy aria-hidden="true" /> Copy verification link</button>
+                  <button type="button" onClick={downloadVc} disabled={vcLoading || !result.certificateId} className="btn-secondary"><FiDownload aria-hidden="true" /> {vcLoading ? 'Preparing…' : 'Download credential (.json)'}</button>
                 </div>
               </>
+            )}
+
+            {result.status !== 'not_found' && embedSnippet && (
+              <section className="card">
+                <div className="flex items-center gap-2 mb-2">
+                  <FiCode aria-hidden="true" className="text-slate-400" />
+                  <h2 className="text-base font-semibold text-slate-100">Embed this verification</h2>
+                </div>
+                <p className="text-xs text-slate-500 mb-3">Paste this snippet on any page to show this credential&apos;s live verification.</p>
+                <textarea
+                  readOnly
+                  value={embedSnippet}
+                  rows={3}
+                  aria-label="Embeddable verification snippet"
+                  className="input-field font-mono text-xs w-full"
+                  onFocus={(event) => event.target.select()}
+                />
+                <button type="button" onClick={copyEmbedSnippet} className="btn-secondary mt-3"><FiCopy aria-hidden="true" /> {copiedSnippet ? 'Copied!' : 'Copy embed snippet'}</button>
+              </section>
             )}
           </motion.section>
         )}

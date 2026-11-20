@@ -19,6 +19,7 @@ export default function CertificateDetail() {
   const [auditTrail, setAuditTrail] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [vcLoading, setVcLoading] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [error, setError] = useState(null);
 
@@ -73,6 +74,18 @@ export default function CertificateDetail() {
       toast.success('Private certificate PDF downloaded.');
     } catch (downloadError) {
       toast.error(downloadError.response?.data?.message || 'Could not download the certificate PDF.');
+    }
+  };
+
+  const downloadVc = async () => {
+    setVcLoading(true);
+    try {
+      await certificateService.downloadVerifiableCredential(certId);
+      toast.success('Verifiable Credential (.json) downloaded.');
+    } catch (downloadError) {
+      toast.error(downloadError.response?.data?.message || 'Could not download the Verifiable Credential.');
+    } finally {
+      setVcLoading(false);
     }
   };
 
@@ -216,6 +229,7 @@ export default function CertificateDetail() {
               <div className="border-t border-slate-700 pt-4 space-y-2">
                 <button type="button" onClick={copyLink} disabled={!certificate.verificationToken} className="btn-secondary w-full text-xs"><FiShare2 aria-hidden="true" /> Copy verification link</button>
                 <button type="button" onClick={copyCertificateId} className="btn-secondary w-full text-xs"><FiCopy aria-hidden="true" /> Copy record ID</button>
+                <button type="button" onClick={downloadVc} disabled={vcLoading} className="btn-secondary w-full text-xs"><FiDownload aria-hidden="true" /> {vcLoading ? 'Preparing…' : 'Download credential (.json)'}</button>
               </div>
             </aside>
           </div>

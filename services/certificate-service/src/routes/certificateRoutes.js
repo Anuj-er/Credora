@@ -4,6 +4,8 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/roleCheck');
 const {
   issueCertificate,
+  bulkIssueCertificates,
+  getVerifiableCredential,
   previewCertificatePdf,
   getCertificate,
   getCertificatePdf,
@@ -22,11 +24,13 @@ router.get('/verify/:certId', verifyCertificate);
 // Protected routes
 router.post('/preview', authenticate, authorize('university', 'admin'), previewCertificatePdf);
 router.post('/issue', authenticate, authorize('university', 'admin'), issueCertificate);
+router.post('/bulk', authenticate, authorize('university', 'admin'), bulkIssueCertificates);
 router.get('/stats', authenticate, authorize('admin', 'university', 'student'), getCertificateStats);
 router.get('/student/:email', authenticate, authorize('student', 'admin'), getStudentCertificates);
 router.get('/institution/:id', authenticate, authorize('university', 'admin'), getInstitutionCertificates);
 router.get('/all', authenticate, authorize('admin'), getAdminCertificates);
 router.get('/audit/:certId', authenticate, getAuditTrail);
+router.get('/:certId/vc', authenticate, authorize('student', 'university', 'admin'), getVerifiableCredential);
 router.get('/:certId/pdf', authenticate, authorize('student', 'university', 'admin'), getCertificatePdf);
 router.get('/:certId', authenticate, authorize('student', 'university', 'admin'), getCertificate);
 router.put('/revoke/:certId', authenticate, authorize('university', 'admin'), revokeCertificate); router.post('/:certId/retry-blockchain', authenticate, authorize('university', 'admin'), retryBlockchain);
