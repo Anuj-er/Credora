@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  client:
+    name: Client build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+        working-directory: client
+      - run: npm run build
+        working-directory: client
+
+  contracts:
+    name: Smart contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: blockchain/package-lock.json
+      - run: npm ci
+        working-directory: blockchain
+      - run: npx hardhat compile
+        working-directory: blockchain
+      - run: npx hardhat test
+        working-directory: blockchain
+
+  backend:
+    name: Backend syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install gateway dependencies
+        run: npm ci --ignore-scripts
+        working-directory: gateway
+      - name: Install service dependencies
+        run: |
+          for service in auth-service certificate-service blockchain-service ipfs-service; do
+            npm ci --ignore-scripts --prefix "services/$service"
+          done
+      - name: Syntax-check every backend entry point
+        run: |
+          for file in gateway/src/index.js services/*/src/index.js; do
+            node --check "$file"
+          done
