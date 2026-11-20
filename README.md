@@ -36,17 +36,11 @@ Credora is a working prototype for issuing and verifying academic credentials wi
 
 ## How it works
 
-```mermaid
-flowchart TD
-    Admin["👤 Admin<br/>approves the institution"] --> Uni["🏛️ University<br/>issues a credential"]
-    Uni --> PDF["📄 Encrypted PDF<br/>AES-256-GCM → MongoDB"]
-    Uni --> IPFS["📌 Encrypted backup<br/>Pinata / IPFS (optional)"]
-    Uni --> Chain["⛓️ Salted commitment<br/>Sepolia smart contract"]
-    PDF --> QR["🔗 QR / share link<br/>bearer token, not the record ID"]
-    Chain --> QR
-    QR --> Verify["✅ Anyone verifies<br/>public page, no login needed"]
-    Verify --> Valid["Valid / pending /<br/>revoked / expired"]
-```
+<p align="center">
+  <img src="docs/diagrams/lifecycle.svg" alt="Credential lifecycle: admin approves, university issues, blockchain proves, anyone verifies" width="640" height="640" />
+</p>
+
+*Diagram source: [`docs/diagrams/lifecycle.mmd`](docs/diagrams/lifecycle.mmd) — rendered with Mermaid, fixed to a 640 by 640 display box.*
 
 **What is on-chain, and what is not:**
 
@@ -71,30 +65,11 @@ A QR/share URL is a **bearer link**: anyone who obtains it can view that credent
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    Client["🖥️ React / Vite client"]
-    Gateway["🚪 API gateway<br/>rate limit · CORS · proxy"]
-    Auth["🔐 Auth service<br/>accounts · roles · institutions"]
-    Cert["📜 Certificate service<br/>credentials · PDF · QR · queues"]
-    ChainSvc["⛓️ Blockchain service<br/>EVM contract calls"]
-    IPFSSvc["📌 IPFS service<br/>Pinata"]
-    Mongo[("🗄️ MongoDB<br/>shared by auth + certificate")]
-    Redis[("⚡ Redis / BullMQ<br/>issuance workers")]
-    Sepolia[("🔷 Sepolia<br/>CertificateRegistry")]
-    Pinata[("📦 Pinata<br/>encrypted backup")]
+<p align="center">
+  <img src="docs/diagrams/architecture.svg" alt="System architecture: React client, API gateway, auth, certificate, blockchain and IPFS services, MongoDB, Redis and Sepolia" width="640" height="640" />
+</p>
 
-    Client -->|"REST /api"| Gateway
-    Gateway --> Auth
-    Gateway --> Cert
-    Auth --> Mongo
-    Cert --> Mongo
-    Cert --> Redis
-    Cert --> ChainSvc
-    Cert --> IPFSSvc
-    ChainSvc --> Sepolia
-    IPFSSvc --> Pinata
-```
+*Diagram source: [`docs/diagrams/architecture.mmd`](docs/diagrams/architecture.mmd) — rendered with Mermaid, fixed to a 640 by 640 display box.*
 
 The API gateway is the browser-facing backend. The blockchain and IPFS write endpoints require the private internal-service token and should not be exposed directly to the public internet. Auth and certificate services **must share one MongoDB database** — they read and write the same credential records.
 
@@ -361,8 +336,8 @@ The contract tests run against the local Hardhat test environment; they do not i
 These are the improvements that would turn the prototype into a production-grade system, in priority order. None of them are implemented yet, and they are listed here so the project's direction is honest about what "complete" means.
 
 1. **Trust and institution onboarding** — email verification, password reset, and a real onboarding flow: domain ownership check, evidence-based admin approval, and a public institution profile a verifier can inspect. This matters most, because on-chain proof is worthless if the issuer itself is unverified.
-2. **Standards-based credentials** — ✅ *Started:* every credential is now also issued as a [W3C Verifiable Credential](https://www.w3.org/TR/vc-data-model-2.0/) document, returned by the verify endpoint and downloadable as `.credential.json`. *Still to do:* Ed25519 Data Integrity signing, DIDs for issuers/holders, and BitstringStatusList revocation (see below).
-3. **Bulk issuance** — ✅ *Done:* CSV upload (up to 100 rows) with per-row validation, a dry-run preview, and per-row results. *Still to do:* reusable templates per degree.
+2. **Standards-based credentials** — *Started:* every credential is now also issued as a [W3C Verifiable Credential](https://www.w3.org/TR/vc-data-model-2.0/) document, returned by the verify endpoint and downloadable as `.credential.json`. *Still to do:* Ed25519 Data Integrity signing, DIDs for issuers/holders, and BitstringStatusList revocation (see below).
+3. **Bulk issuance** — *Done:* CSV upload (up to 100 rows) with per-row validation, a dry-run preview, and per-row results. *Still to do:* reusable templates per degree.
 4. **Verifier tools** — a public verification API and an embeddable verification widget, so an employer can check a credential from their own site.
 5. **Operations** — automated backups of encrypted data, the encryption key in a proper secret store (never a single `.env` on one server), health monitoring and alerting, and multi-region redundancy.
 

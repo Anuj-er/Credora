@@ -1,0 +1,11 @@
+flowchart TD
+    Client["React / Vite client"] --> Gateway["API gateway<br/>rate limit, CORS, proxy"]
+    Gateway --> Auth["Auth service<br/>accounts, roles, institutions"]
+    Gateway --> Cert["Certificate service<br/>credentials, PDF, QR, queues"]
+    Cert --> ChainSvc["Blockchain service<br/>EVM contract calls"]
+    Cert --> IPFSSvc["IPFS service<br/>Pinata"]
+    Auth --> Mongo[("MongoDB<br/>shared by auth and certificate")]
+    Cert --> Mongo
+    Cert --> Redis[("Redis / BullMQ<br/>issuance workers")]
+    ChainSvc --> Sepolia[("Sepolia<br/>CertificateRegistry")]
+    IPFSSvc --> Pinata[("Pinata<br/>encrypted backup")]

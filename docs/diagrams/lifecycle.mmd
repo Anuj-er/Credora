@@ -1,0 +1,9 @@
+flowchart TD
+    Admin["Admin<br/>approves the institution"] --> Uni["University<br/>issues a credential"]
+    Uni --> PDF["Encrypted PDF<br/>AES-256-GCM, stored in MongoDB"]
+    Uni --> IPFS["Encrypted backup<br/>Pinata / IPFS (optional)"]
+    Uni --> Chain["Salted commitment<br/>Sepolia smart contract"]
+    PDF --> QR["QR / share link<br/>bearer token, not the record ID"]
+    Chain --> QR
+    QR --> Verify["Anyone verifies<br/>public page, no login needed"]
+    Verify --> Valid["Valid / pending /<br/>revoked / expired"]
