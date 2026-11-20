@@ -28,7 +28,7 @@ const extractShareToken = (value) => {
 };
 
 export default function VerifyCertificate() {
-  const { certId: routeToken } = useParams();
+  const { token: routeToken } = useParams();
   const [shareLink, setShareLink] = useState(routeToken || '');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -98,8 +98,7 @@ export default function VerifyCertificate() {
   const verificationUrl = token ? `${window.location.origin}/verify/${token}` : '';
 
   return (
-    <div className="verify-page">
-      <div className="verify-result">
+    <div className="verify-page verify-result">
         <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="verify-intro">
           <p className="eyebrow text-indigo-600"><FiShield aria-hidden="true" /> CREDORA / PUBLIC VERIFICATION</p>
           <h1>Check a credential</h1>
@@ -225,7 +224,6 @@ export default function VerifyCertificate() {
             <p>Paste the secure verification link provided by the certificate holder.</p>
           </div>
         )}
-      </div>
     </div>
   );
 }

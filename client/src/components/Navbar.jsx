@@ -70,7 +70,7 @@ export default function Navbar() {
               {dropdownOpen && (
                 <>
                   <button className="nav-dismiss" onClick={() => setDropdownOpen(false)} aria-label="Close account menu" />
-                  <div className="nav-dropdown">
+                  <div className="nav-dropdown" role="menu">
                     <div className="nav-dropdown-head">
                       <p className="text-sm font-semibold text-slate-900">{user?.name}</p>
                       <p className="mt-1 break-all text-xs text-slate-500">{user?.email}</p>

@@ -99,7 +99,7 @@ export default function Register() {
           <select id="role" name="role" value={formData.role} onChange={handleChange} className="input-field">
             <option value="student">Student</option>
             <option value="university">University</option>
-            <option value="verifier">Verifier</option>
+            {/* No verifier role: anyone can verify a credential from its public link, no account needed. */}
           </select>
         </div>
 

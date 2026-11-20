@@ -249,15 +249,13 @@ export default function AdminDashboard() {
 
         {/* Overview */}
         {activeTab === 'Overview' && (
-          <div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-              <StatsCard title="Total Certificates" value={stats.total} icon={<FiFileText />} color="blue" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+              <StatsCard title="Total Certificates" value={stats.total} icon={<FiFileText />} color="cyan" />
               <StatsCard title="Active" value={stats.active} icon={<FiCheckCircle />} color="green" />
-              <StatsCard title="Expired" value={stats.expired || 0} icon={<FiClock />} color="yellow" />
-              <StatsCard title="Revoked" value={stats.revoked} icon={<FiXCircle />} color="red" />
-              <StatsCard title="Pending" value={stats.pending} icon={<FiClock />} color="yellow" />
+              <StatsCard title="Expired" value={stats.expired || 0} icon={<FiClock />} color="lime" />
+              <StatsCard title="Revoked" value={stats.revoked} icon={<FiXCircle />} color="coral" />
+              <StatsCard title="Pending" value={stats.pending} icon={<FiClock />} color="lime" />
             </div>
-          </div>
         )}
 
         {/* Certificates */}
@@ -483,7 +481,6 @@ export default function AdminDashboard() {
                               >
                                 <option value="student">Student</option>
                                 <option value="university">University</option>
-                                <option value="verifier">Verifier</option>
                                 <option value="admin">Admin</option>
                               </select>
                             </td>

@@ -6,7 +6,7 @@ export default function AuthFrame({ eyebrow, title, description, children, foote
   return (
     <div className="auth-page">
       <div className="auth-layout">
-        <aside className="auth-story">
+        <section className="auth-story" aria-label="About Credora">
           <Link to="/" className="auth-brand">
             <span className="brand-mark" aria-hidden="true" />
             <span>CREDORA</span>
@@ -49,7 +49,7 @@ export default function AuthFrame({ eyebrow, title, description, children, foote
             <span>IDENTITY / {step}</span>
             <span>LOCAL ACCESS <i className="signal-dot" /></span>
           </div>
-        </aside>
+        </section>
 
         <motion.section
           className="auth-card"

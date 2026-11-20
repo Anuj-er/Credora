@@ -119,10 +119,10 @@ export default function StudentDashboard() {
         {activeTab === 'Overview' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-              <StatsCard title="Total Certificates" value={stats.total} icon={<FiFileText />} color="blue" />
+              <StatsCard title="Total Certificates" value={stats.total} icon={<FiFileText />} color="cyan" />
               <StatsCard title="Active Certificates" value={activeCerts} icon={<FiCheckCircle />} color="green" />
-              <StatsCard title="Expired" value={stats.expired || 0} icon={<FiFileText />} color="yellow" />
-              <StatsCard title="Revoked" value={stats.revoked || 0} icon={<FiFileText />} color="red" />
+              <StatsCard title="Expired" value={stats.expired || 0} icon={<FiFileText />} color="lime" />
+              <StatsCard title="Revoked" value={stats.revoked || 0} icon={<FiFileText />} color="coral" />
             </div>
 
             <div className="card">
@@ -132,7 +132,7 @@ export default function StudentDashboard() {
               ) : (
                 <div className="space-y-4">
                   {recentCertificates.slice(0, 5).map((cert) => (
-                    <div key={cert.certificateId} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                    <article key={cert.certificateId} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
                       <div>
                         <p className="font-medium text-slate-900">{cert.courseName}</p>
                         <p className="text-sm text-slate-500">{cert.institutionName} - {new Date(cert.issueDate || cert.createdAt).toLocaleDateString()}</p>
@@ -143,7 +143,7 @@ export default function StudentDashboard() {
                           <FiEye className="w-4 h-4" />
                         </button>
                       </div>
-                    </div>
+                    </article>
                   ))}
                 </div>
               )}

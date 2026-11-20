@@ -1,15 +1,16 @@
 import { motion } from 'framer-motion';
 
+// Colour names are the actual theme tokens, not generic colour words.
 const accents = {
-  blue: 'var(--glitch-cyan)',
-  green: '#83dfa6',
-  red: 'var(--glitch-coral)',
-  yellow: 'var(--glitch-lime)',
-  purple: 'var(--signal-violet)',
+  cyan: 'var(--glitch-cyan)',
+  green: 'var(--glitch-green)',
+  coral: 'var(--glitch-coral)',
+  lime: 'var(--glitch-lime)',
+  violet: 'var(--signal-violet)',
 };
 
-export default function StatsCard({ title, value, icon, color = 'blue', subtitle }) {
-  const accent = accents[color] || accents.blue;
+export default function StatsCard({ title, value, icon, color = 'cyan', subtitle }) {
+  const accent = accents[color] || accents.cyan;
   const renderIcon = () => {
     if (!icon) return null;
     if (typeof icon === 'function') {

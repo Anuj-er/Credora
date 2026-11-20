@@ -309,11 +309,11 @@ export default function UniversityDashboard() {
         {activeTab === 'Overview' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-              <StatsCard title="Total Issued" value={stats.total} icon={<FiFileText />} color="blue" />
+              <StatsCard title="Total Issued" value={stats.total} icon={<FiFileText />} color="cyan" />
               <StatsCard title="Active" value={stats.active} icon={<FiCheckCircle />} color="green" />
-              <StatsCard title="Expired" value={stats.expired || 0} icon={<FiClock />} color="yellow" />
-              <StatsCard title="Revoked" value={stats.revoked} icon={<FiXCircle />} color="red" />
-              <StatsCard title="Pending" value={stats.pending} icon={<FiClock />} color="yellow" />
+              <StatsCard title="Expired" value={stats.expired || 0} icon={<FiClock />} color="lime" />
+              <StatsCard title="Revoked" value={stats.revoked} icon={<FiXCircle />} color="coral" />
+              <StatsCard title="Pending" value={stats.pending} icon={<FiClock />} color="lime" />
             </div>
 
             <div className="card">
@@ -365,60 +365,60 @@ export default function UniversityDashboard() {
               <form onSubmit={handleIssue} className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div className="sm:col-span-2">
-                    <label className="label">Certificate title</label>
-                    <input name="certificateTitle" value={form.certificateTitle} onChange={handleChange} required maxLength={80} className="input-field" placeholder="Certificate of Achievement" />
+                    <label htmlFor="certificateTitle" className="label">Certificate title</label>
+                    <input id="certificateTitle" name="certificateTitle" value={form.certificateTitle} onChange={handleChange} required maxLength={80} className="input-field" placeholder="Certificate of Achievement" />
                     <p className="mt-1.5 text-xs text-slate-500">Edit the wording that appears as the main heading on the certificate.</p>
                   </div>
                   <div>
-                    <label className="label">Student Name *</label>
-                    <input name="studentName" value={form.studentName} onChange={handleChange} required maxLength={120} autoComplete="name" className="input-field" placeholder="As it should appear on the certificate" />
+                    <label htmlFor="studentName" className="label">Student Name *</label>
+                    <input id="studentName" name="studentName" value={form.studentName} onChange={handleChange} required maxLength={120} autoComplete="name" className="input-field" placeholder="As it should appear on the certificate" />
                   </div>
                   <div>
-                    <label className="label">Student Sign-in Email *</label>
-                    <input name="studentEmail" type="email" value={form.studentEmail} onChange={handleChange} required maxLength={254} autoComplete="email" className="input-field" placeholder="student@university.edu" aria-describedby="student-email-help" />
+                    <label htmlFor="studentEmail" className="label">Student Sign-in Email *</label>
+                    <input id="studentEmail" name="studentEmail" type="email" value={form.studentEmail} onChange={handleChange} required maxLength={254} autoComplete="email" className="input-field" placeholder="student@university.edu" aria-describedby="student-email-help" />
                     <p id="student-email-help" className="mt-1.5 text-xs text-slate-500">Use the email they will use to register; this connects the credential to their workspace.</p>
                   </div>
                   <div>
-                    <label className="label">Student ID <span className="text-slate-500">(optional)</span></label>
-                    <input name="studentId" value={form.studentId} onChange={handleChange} maxLength={80} className="input-field" placeholder="University roll or registration number" />
+                    <label htmlFor="studentId" className="label">Student ID <span className="text-slate-500">(optional)</span></label>
+                    <input id="studentId" name="studentId" value={form.studentId} onChange={handleChange} maxLength={80} className="input-field" placeholder="University roll or registration number" />
                   </div>
                   <div>
-                    <label className="label">Credential / Qualification *</label>
-                    <input name="courseName" value={form.courseName} onChange={handleChange} required maxLength={160} className="input-field" placeholder="Bachelor of Computer Science" />
+                    <label htmlFor="courseName" className="label">Credential / Qualification *</label>
+                    <input id="courseName" name="courseName" value={form.courseName} onChange={handleChange} required maxLength={160} className="input-field" placeholder="Bachelor of Computer Science" />
                   </div>
                   <div>
-                    <label className="label">Result / Grade <span className="text-slate-500">(optional)</span></label>
-                    <input name="grade" value={form.grade} onChange={handleChange} maxLength={30} className="input-field" placeholder="8.7 CGPA, First Class, Pass" />
+                    <label htmlFor="grade" className="label">Result / Grade <span className="text-slate-500">(optional)</span></label>
+                    <input id="grade" name="grade" value={form.grade} onChange={handleChange} maxLength={30} className="input-field" placeholder="8.7 CGPA, First Class, Pass" />
                   </div>
                   <div>
-                    <label className="label">Issue Date *</label>
-                    <input name="issueDate" type="date" value={form.issueDate} onChange={handleChange} required max={localDateInput()} className="input-field" />
+                    <label htmlFor="issueDate" className="label">Issue Date *</label>
+                    <input id="issueDate" name="issueDate" type="date" value={form.issueDate} onChange={handleChange} required max={localDateInput()} className="input-field" />
                   </div>
                   <div>
-                    <label className="label">Valid Until <span className="text-slate-500">(optional)</span></label>
-                    <input name="validUntil" type="date" value={form.validUntil} onChange={handleChange} min={form.issueDate} className="input-field" />
+                    <label htmlFor="validUntil" className="label">Valid Until <span className="text-slate-500">(optional)</span></label>
+                    <input id="validUntil" name="validUntil" type="date" value={form.validUntil} onChange={handleChange} min={form.issueDate} className="input-field" />
                     <p className="mt-1.5 text-xs text-slate-500">Leave blank for a credential with no expiry date.</p>
                   </div>
                   <div>
-                    <label className="label">Instructor / Teacher <span className="text-slate-500">(optional)</span></label>
-                    <input name="teacherName" value={form.teacherName} onChange={handleChange} maxLength={120} className="input-field" placeholder="Dr. A. Sharma" />
+                    <label htmlFor="teacherName" className="label">Instructor / Teacher <span className="text-slate-500">(optional)</span></label>
+                    <input id="teacherName" name="teacherName" value={form.teacherName} onChange={handleChange} maxLength={120} className="input-field" placeholder="Dr. A. Sharma" />
                   </div>
                   <div>
-                    <label className="label">Instructor title <span className="text-slate-500">(optional)</span></label>
-                    <input name="teacherTitle" value={form.teacherTitle} onChange={handleChange} maxLength={80} className="input-field" placeholder="Faculty advisor" />
+                    <label htmlFor="teacherTitle" className="label">Instructor title <span className="text-slate-500">(optional)</span></label>
+                    <input id="teacherTitle" name="teacherTitle" value={form.teacherTitle} onChange={handleChange} maxLength={80} className="input-field" placeholder="Faculty advisor" />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="label">Achievement criteria <span className="text-slate-500">(optional)</span></label>
-                    <textarea name="criteria" value={form.criteria} onChange={handleChange} maxLength={300} rows={2} className="input-field min-h-20" placeholder="What did the student need to demonstrate to earn this credential?" />
+                    <label htmlFor="criteria" className="label">Achievement criteria <span className="text-slate-500">(optional)</span></label>
+                    <textarea id="criteria" name="criteria" value={form.criteria} onChange={handleChange} maxLength={300} rows={2} className="input-field min-h-20" placeholder="What did the student need to demonstrate to earn this credential?" />
                     <p className="mt-1.5 text-xs text-slate-500">Visible to anyone with the verification link. {form.criteria.length}/300 characters.</p>
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="label">Sponsors <span className="text-slate-500">(optional)</span></label>
-                    <textarea value={sponsorsText} onChange={(event) => setSponsorsText(event.target.value)} maxLength={520} rows={2} className="input-field min-h-20" placeholder="One sponsor per line, or separate names with commas" />
+                    <label htmlFor="sponsors" className="label">Sponsors <span className="text-slate-500">(optional)</span></label>
+                    <textarea id="sponsors" value={sponsorsText} onChange={(event) => setSponsorsText(event.target.value)} maxLength={520} rows={2} className="input-field min-h-20" placeholder="One sponsor per line, or separate names with commas" />
                     <p className="mt-1.5 text-xs text-slate-500">Up to five sponsors can be shown on the certificate and verification preview. {parsedSponsors().length}/5 entered.</p>
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="label">University logo <span className="text-slate-500">(optional)</span></label>
+                    <label htmlFor="credential-university-logo" className="label">University logo <span className="text-slate-500">(optional)</span></label>
                     <div className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 p-3">
                       {logoDataUrl && <img src={logoDataUrl} alt="University logo preview" className="credential-logo-upload-preview" />}
                       <div className="min-w-0 flex-1">
@@ -521,7 +521,7 @@ export default function UniversityDashboard() {
                           <td className="py-3 px-4 text-slate-500">{new Date(cert.issueDate || cert.createdAt).toLocaleDateString()}</td>
                           <td className="py-3 px-4">
                             <div className="flex gap-2">
-                              <button onClick={() => window.open(`/certificate/${cert.certificateId}`, '_blank', 'noopener,noreferrer')} className="text-indigo-600 hover:text-indigo-800" title="View credential">
+                              <button onClick={() => navigate(`/certificate/${cert.certificateId}`)} className="text-indigo-600 hover:text-indigo-800" title="View credential" aria-label={`View credential ${cert.certificateId}`}>
                                 <FiEye className="w-4 h-4" />
                               </button>
                               <button

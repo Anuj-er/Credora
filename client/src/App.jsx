@@ -24,7 +24,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/verify" element={<VerifyCertificate />} />
-          <Route path="/verify/:certId" element={<VerifyCertificate />} />
+          <Route path="/verify/:token" element={<VerifyCertificate />} />
           <Route path="/certificate/:certId" element={
             <ProtectedRoute roles={['student', 'university', 'admin']}>
               <CertificateDetail />
