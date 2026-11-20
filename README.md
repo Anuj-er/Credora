@@ -1,5 +1,6 @@
 # Credora — Verifiable Academic Credentials
 
+[![CI](https://github.com/Anuj-er/Credora/actions/workflows/ci.yml/badge.svg)](https://github.com/Anuj-er/Credora/actions/workflows/ci.yml)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.20-363636?logo=solidity&logoColor=white)](https://soliditylang.org/)
 [![Ethereum](https://img.shields.io/badge/Network-Sepolia-627EEA?logo=ethereum&logoColor=white)](https://sepolia.etherscan.io/address/0xBb0bfdA162ee255116F8da017086c8e012b8fF4d)
@@ -15,24 +16,36 @@ Credora is a working prototype for issuing and verifying academic credentials wi
 
 > **Prototype, not production.** Credora is a student project demonstrating a complete credential lifecycle. It is not a production identity system: see [Known limitations](#known-limitations) and [Roadmap](#roadmap--future-proofing). Do not use real student records in it.
 
+## Contents
+
+- [How it works](#how-it-works)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Repository layout](#repository-layout)
+- [Live demo deployment](#live-demo-deployment)
+- [Requirements](#requirements)
+- [Quick start: local development](#quick-start-local-development)
+- [Local Docker workflow](#local-docker-workflow)
+- [Environment variables](#environment-variables)
+- [API reference](#api-reference)
+- [Checks](#checks)
+- [Known limitations](#known-limitations)
+- [Roadmap — future-proofing](#roadmap--future-proofing)
+- [Team](#team)
+- [License](#license)
+
 ## How it works
 
-```text
-  Admin approves an institution
-        │
-        ▼
-  University issues a credential (PDF preview → issue)
-        │
-        ├─► Encrypted PDF stored in MongoDB (AES-256-GCM)
-        ├─► Encrypted backup pinned to IPFS via Pinata (optional)
-        └─► Salted commitment written to the Sepolia contract
-        │
-        ▼
-  Student receives a QR / share link (a bearer token, not the record ID)
-        │
-        ▼
-  Anyone verifies: public page shows the credential, its on-chain
-  proof, and its current status (valid / pending / revoked / expired)
+```mermaid
+flowchart TD
+    Admin["👤 Admin<br/>approves the institution"] --> Uni["🏛️ University<br/>issues a credential"]
+    Uni --> PDF["📄 Encrypted PDF<br/>AES-256-GCM → MongoDB"]
+    Uni --> IPFS["📌 Encrypted backup<br/>Pinata / IPFS (optional)"]
+    Uni --> Chain["⛓️ Salted commitment<br/>Sepolia smart contract"]
+    PDF --> QR["🔗 QR / share link<br/>bearer token, not the record ID"]
+    Chain --> QR
+    QR --> Verify["✅ Anyone verifies<br/>public page, no login needed"]
+    Verify --> Valid["Valid / pending /<br/>revoked / expired"]
 ```
 
 **What is on-chain, and what is not:**
@@ -58,16 +71,29 @@ A QR/share URL is a **bearer link**: anyone who obtains it can view that credent
 
 ## Architecture
 
-```text
-React/Vite client
-       │ /api
-       ▼
-API gateway ───── Auth service ───── MongoDB (shared)
-       ├──────── Certificate service ─ MongoDB (shared)
-       │                 ├─────────── Redis/BullMQ workers
-       │                 ├─────────── Blockchain service ─ Sepolia RPC
-       │                 └─────────── IPFS service ─────── Pinata
-       └──────── rate limiting / CORS
+```mermaid
+flowchart LR
+    Client["🖥️ React / Vite client"]
+    Gateway["🚪 API gateway<br/>rate limit · CORS · proxy"]
+    Auth["🔐 Auth service<br/>accounts · roles · institutions"]
+    Cert["📜 Certificate service<br/>credentials · PDF · QR · queues"]
+    ChainSvc["⛓️ Blockchain service<br/>EVM contract calls"]
+    IPFSSvc["📌 IPFS service<br/>Pinata"]
+    Mongo[("🗄️ MongoDB<br/>shared by auth + certificate")]
+    Redis[("⚡ Redis / BullMQ<br/>issuance workers")]
+    Sepolia[("🔷 Sepolia<br/>CertificateRegistry")]
+    Pinata[("📦 Pinata<br/>encrypted backup")]
+
+    Client -->|"REST /api"| Gateway
+    Gateway --> Auth
+    Gateway --> Cert
+    Auth --> Mongo
+    Cert --> Mongo
+    Cert --> Redis
+    Cert --> ChainSvc
+    Cert --> IPFSSvc
+    ChainSvc --> Sepolia
+    IPFSSvc --> Pinata
 ```
 
 The API gateway is the browser-facing backend. The blockchain and IPFS write endpoints require the private internal-service token and should not be exposed directly to the public internet. Auth and certificate services **must share one MongoDB database** — they read and write the same credential records.
@@ -94,6 +120,13 @@ The demo runs on Vercel (frontend) + one AWS EC2 instance in Mumbai (backend), a
 - Frontend: https://credora-eosin.vercel.app/
 - Backend: EC2 `credora-demo` (t3.small, ap-south-1), Docker Compose, nginx proxy on port 80; all service ports bind to loopback only.
 - Demo data is fictional: Demo University (DEMO-001), Northbridge Institute (NORTH-001), Lakeside College (LAKE-001).
+
+### Try it in 2 minutes
+
+1. Open the [live demo](https://credora-eosin.vercel.app/) and go to **Verify**.
+2. Paste a credential's share link (or scan its QR code) — no account needed.
+3. See the credential, its status, and its on-chain proof, then follow the transaction link to Etherscan.
+4. To issue one yourself: register as a university with an approved institution code, open the **Issue** tab, and try the **Bulk Issue** tab with the downloadable CSV template to issue several at once.
 
 Demo hosting costs are covered by AWS credits; the instance should be stopped when not demoing. A stopped instance may get a new public IP on restart, which requires updating the Vercel rewrite and redeploying.
 
