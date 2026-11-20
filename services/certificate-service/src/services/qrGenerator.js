@@ -1,6 +1,15 @@
 const QRCode = require('qrcode');
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+// No localhost fallback: a QR code pointing at localhost is useless in
+// production and silently wrong. FRONTEND_URL must be set explicitly
+// (the demo Compose sets it from PUBLIC_URL); local development sets it
+// in .env to http://localhost:5173.
+const FRONTEND_URL = (process.env.FRONTEND_URL || process.env.PUBLIC_URL || '').replace(/\/$/, '');
+if (!FRONTEND_URL) {
+  throw new Error(
+    'FRONTEND_URL (or PUBLIC_URL) must be set to generate QR codes — refusing to fall back to localhost'
+  );
+}
 
 /**
  * Generate a QR code as a base64 data URL containing the verification URL

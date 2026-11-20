@@ -7,6 +7,7 @@ const morgan = require('morgan');
 const Redis = require('ioredis');
 
 const blockchainRoutes = require('./routes/blockchainRoutes');
+const { verifyNetwork, getNetworkInfo } = require('./services/contractService');
 
 const app = express();
 const PORT = process.env.PORT || process.env.BLOCKCHAIN_SERVICE_PORT || 3003;
@@ -47,6 +48,7 @@ app.get('/health', (req, res) => {
     status: redisReady ? 'healthy' : 'starting',
     timestamp: new Date().toISOString(),
     redis: redisReady ? 'connected' : 'disconnected',
+    rpcUrl: getNetworkInfo().rpcUrl,
   });
 });
 
@@ -67,8 +69,20 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🔗 Blockchain Service running on port ${PORT}`);
+  // Fail fast on a wrong / unreachable chain when a real contract is
+  // configured (Sepolia deployment). In local mock mode (no contract
+  // address) only warn, so local development still starts.
+  try {
+    await verifyNetwork();
+  } catch (error) {
+    if (process.env.CONTRACT_ADDRESS) {
+      console.error('❌ Blockchain network check failed, exiting:', error.message);
+      process.exit(1);
+    }
+    console.warn('⚠️  Blockchain network check failed (mock mode, continuing):', error.message);
+  }
 });
 
 module.exports = app;

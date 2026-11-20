@@ -2,48 +2,117 @@ const { ethers } = require('ethers');
 const path = require('path');
 const fs = require('fs');
 
-// Provider setup
-const NETWORK_URL = process.env.HARDHAT_NETWORK_URL || 'http://localhost:8545';
-const provider = new ethers.JsonRpcProvider(NETWORK_URL);
+// Provider setup.
+// Primary RPC: HARDHAT_NETWORK_URL first (the demo Compose maps the Sepolia
+// RPC into it), then SEPOLIA_RPC_URL. A separate fallback RPC is tried if
+// the primary cannot be reached (see verifyNetwork below).
+const PRIMARY_RPC_URL =
+  process.env.HARDHAT_NETWORK_URL ||
+  process.env.SEPOLIA_RPC_URL ||
+  'http://localhost:8545';
+const FALLBACK_RPC_URL =
+  process.env.SEPOLIA_RPC_FALLBACK_URL || process.env.RPC_FALLBACK_URL || null;
+let activeRpcUrl = PRIMARY_RPC_URL;
+let provider = new ethers.JsonRpcProvider(PRIMARY_RPC_URL);
 
-// Hardhat's well-known account zero is used only for a loopback development RPC.
-// It is never selected for Sepolia or any other remote network.
-const localRpc = (() => {
+const isLocalRpcUrl = (rpcUrl) => {
   try {
-    const rpcUrl = new URL(NETWORK_URL);
-    return ['localhost', '127.0.0.1', '::1'].includes(rpcUrl.hostname);
+    const parsed = new URL(rpcUrl);
+    return ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
   } catch (_error) {
     return false;
   }
-})();
+};
+
+// Hardhat's well-known account zero is used only for a loopback development RPC.
+// It is never selected for Sepolia or any other remote network.
 const LOCAL_HARDHAT_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
-const PRIVATE_KEY = localRpc ? LOCAL_HARDHAT_PRIVATE_KEY : process.env.DEPLOYER_PRIVATE_KEY;
-const signer = PRIVATE_KEY
-  ? new ethers.Wallet(PRIVATE_KEY, provider)
-  : null;
+const PRIVATE_KEY = isLocalRpcUrl(activeRpcUrl)
+  ? LOCAL_HARDHAT_PRIVATE_KEY
+  : process.env.DEPLOYER_PRIVATE_KEY;
+let signer = PRIVATE_KEY ? new ethers.Wallet(PRIVATE_KEY, provider) : null;
 
 // Contract setup
 let contract = null;
 let contractABI = null;
 
-try {
-  const artifactPath = path.resolve(
-    __dirname,
-    '../../../../blockchain/artifacts/contracts/CertificateRegistry.sol/CertificateRegistry.json'
-  );
-  const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
-  contractABI = artifact.abi;
+const loadContract = (activeProvider) => {
+  try {
+    const artifactPath = path.resolve(
+      __dirname,
+      '../../../../blockchain/artifacts/contracts/CertificateRegistry.sol/CertificateRegistry.json'
+    );
+    const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
+    contractABI = artifact.abi;
 
-  const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
-  if (CONTRACT_ADDRESS && contractABI) {
-    contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, signer || provider);
-    console.log('✅ Smart contract loaded at:', CONTRACT_ADDRESS);
-  } else {
-    console.warn('⚠️  CONTRACT_ADDRESS not set. Running in mock mode.');
+    const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
+    if (CONTRACT_ADDRESS && contractABI) {
+      contract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        contractABI,
+        signer || activeProvider
+      );
+      console.log('✅ Smart contract loaded at:', CONTRACT_ADDRESS);
+    } else {
+      console.warn('⚠️  CONTRACT_ADDRESS not set. Running in mock mode.');
+    }
+  } catch (err) {
+    console.warn('⚠️  Contract artifact not found. Running in mock mode.', err.message);
   }
-} catch (err) {
-  console.warn('⚠️  Contract artifact not found. Running in mock mode.', err.message);
-}
+};
+
+loadContract(provider);
+
+/**
+ * Check the RPC is reachable and on the expected chain, switching to the
+ * fallback RPC once if the primary fails. Call at service startup.
+ * Expected chain: EXPECTED_CHAIN_ID when set; otherwise 11155111 (Sepolia)
+ * when the primary URL names Sepolia, and no check for a local chain.
+ * Throws when no RPC answers or the chain ID does not match, so the
+ * service fails fast instead of silently issuing against the wrong chain.
+ * @returns {Promise<{rpcUrl: string, chainId: number, fallbackUsed: boolean}>}
+ */
+const verifyNetwork = async () => {
+  const expectedChainId = process.env.EXPECTED_CHAIN_ID
+    ? Number(process.env.EXPECTED_CHAIN_ID)
+    : PRIMARY_RPC_URL.toLowerCase().includes('sepolia')
+      ? 11155111
+      : null;
+  const candidates = [
+    { url: PRIMARY_RPC_URL, fallbackUsed: false },
+    ...(FALLBACK_RPC_URL && FALLBACK_RPC_URL !== PRIMARY_RPC_URL
+      ? [{ url: FALLBACK_RPC_URL, fallbackUsed: true }]
+      : []),
+  ];
+  let lastError = null;
+  for (const candidate of candidates) {
+    try {
+      const candidateProvider = new ethers.JsonRpcProvider(candidate.url);
+      const network = await candidateProvider.getNetwork();
+      const chainId = Number(network.chainId);
+      if (expectedChainId !== null && chainId !== expectedChainId) {
+        throw new Error(
+          `Chain ID mismatch on ${candidate.url}: expected ${expectedChainId}, got ${chainId}`
+        );
+      }
+      if (candidate.fallbackUsed || candidate.url !== activeRpcUrl) {
+        activeRpcUrl = candidate.url;
+        provider = candidateProvider;
+        signer = PRIVATE_KEY ? new ethers.Wallet(PRIVATE_KEY, provider) : null;
+        loadContract(provider);
+        console.log(`⚠️  Using fallback RPC: ${candidate.url}`);
+      }
+      console.log(`✅ Blockchain RPC reachable: ${candidate.url} (chainId ${chainId})`);
+      return { rpcUrl: candidate.url, chainId, fallbackUsed: candidate.fallbackUsed };
+    } catch (error) {
+      lastError = error;
+      console.error(`❌ Blockchain RPC check failed for ${candidate.url}:`, error.message);
+    }
+  }
+  throw new Error(`No blockchain RPC reachable: ${lastError ? lastError.message : 'unknown error'}`);
+};
+
+const getNetworkInfo = () => ({ rpcUrl: activeRpcUrl, fallbackRpcUrl: FALLBACK_RPC_URL });
 
 const redis = global.redisClient;
 
@@ -67,9 +136,25 @@ async function registerCertificate(certId, credentialHash) {
       if (existing.credentialHash.toLowerCase() !== String(credentialHash).toLowerCase()) {
         throw new Error('This certificate ID is already anchored to a different credential proof.');
       }
+      // Recover the original transaction hash from the CertificateIssued
+      // event, so a duplicate / timeout retry does not lose the tx.
+      let txHash = null;
+      let blockNumber = null;
+      try {
+        const events = await contract.queryFilter(
+          contract.filters.CertificateIssued(certId)
+        );
+        const first = events && events[0];
+        if (first) {
+          txHash = first.transactionHash || null;
+          blockNumber = first.blockNumber != null ? Number(first.blockNumber) : null;
+        }
+      } catch (eventError) {
+        console.warn('⚠️  Could not recover original tx from events:', eventError.message);
+      }
       return {
-        txHash: null,
-        blockNumber: null,
+        txHash,
+        blockNumber,
         certId,
         alreadyRegistered: true,
         isRevoked: existing.isRevoked,
@@ -310,4 +395,6 @@ module.exports = {
   getAuditTrail,
   authorizeIssuer,
   isAuthorizedIssuer,
+  verifyNetwork,
+  getNetworkInfo,
 };

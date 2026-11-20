@@ -1,5 +1,7 @@
 # Credora
 
+Copyright (c) 2026 Anuj Kumar, Ananya Goyal, Amisha Pundir, Aneet Kaur. All rights reserved. See LICENSE.
+
 Credora is a prototype for issuing and checking academic credentials. An approved university account creates a credential and a PDF. A recipient can share its QR link so another person can review the displayed details, the credential proof recorded on an EVM chain, and its current revocation status.
 
 ## What it does
